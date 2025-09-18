@@ -76,3 +76,4 @@ Designed to be modular to integrate real IoT devices, external weather APIs, and
 - Adjust the alert threshold to your operational policy.
 
 
+# solar-twin
