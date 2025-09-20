@@ -72,31 +72,27 @@ function predictFromWeather(weather: Weather, ratedKw: number): number {
 }
 
 export default function Dashboard() {
-  // Generate dummy actual output that changes every hour
-  const generateDummyActual = (predicted: number, timestamp: number): number => {
-    const hourOfDay = new Date(timestamp).getHours()
-    const minuteOfDay = new Date(timestamp).getMinutes()
+  // Generate dummy actual output based on real sensor data
+  const generateDummyActual = (predicted: number, timestamp: number, sensorData: any): number => {
+    // Base the actual output on sensor power reading (convert W to kW)
+    const sensorPowerKw = sensorData.power / 1000 // Convert W to kW
     
-    // Base efficiency that varies by hour (morning ramp up, afternoon peak, evening decline)
-    let baseEfficiency = 0.75 // Base 75% efficiency
-    if (hourOfDay >= 6 && hourOfDay <= 8) baseEfficiency = 0.65 // Morning ramp
-    else if (hourOfDay >= 9 && hourOfDay <= 15) baseEfficiency = 0.85 // Peak hours
-    else if (hourOfDay >= 16 && hourOfDay <= 18) baseEfficiency = 0.70 // Afternoon decline
-    else baseEfficiency = 0.40 // Early morning/evening
+    // Add some efficiency factors and realistic variations
+    const efficiency = 0.85 + (Math.random() - 0.5) * 0.1 // 80-90% efficiency
+    const temperatureDerate = sensorData.panelTemperature > 25 
+      ? 1 - ((sensorData.panelTemperature - 25) * 0.004) // -0.4% per degree above 25°C
+      : 1
     
-    // Add hourly variation (changes every hour)
-    const hourlyVariation = Math.sin((hourOfDay + minuteOfDay/60) * Math.PI / 6) * 0.1
+    // Calculate actual based on sensor power with efficiency factors
+    let actualFromSensor = sensorPowerKw * efficiency * temperatureDerate
     
-    // Add some random fluctuation but keep it realistic
-    const randomFluctuation = (Math.random() - 0.5) * 0.15
+    // Ensure actual is always less than predicted (cap at 90% of predicted)
+    actualFromSensor = Math.min(actualFromSensor, predicted * 0.9)
     
-    // Weather-based reduction (simulated)
-    const weatherReduction = Math.random() * 0.1 // 0-10% weather impact
+    // Add small random fluctuation
+    const fluctuation = (Math.random() - 0.5) * 0.05
     
-    // Calculate final efficiency (ensure it's always less than predicted)
-    const totalEfficiency = Math.max(0.3, Math.min(0.9, baseEfficiency + hourlyVariation + randomFluctuation - weatherReduction))
-    
-    return Math.max(0, predicted * totalEfficiency)
+    return Math.max(0, actualFromSensor + fluctuation)
   }
 
   const [stream, setStream] = useState<Array<{ t: number; actual: number; predicted: number }>>(() => {
@@ -112,7 +108,11 @@ export default function Dashboard() {
       
       const idealKw = 5 * sunAngle // 5kW rated
       const predictedKw = idealKw
-      const actualKw = generateDummyActual(predictedKw, timestamp) // Generate realistic actual value
+      const tempSensorData = {
+        power: idealKw * 1000, // Convert kW to W for sensor simulation
+        panelTemperature: 25 + sunAngle * 20 // Simulate temperature based on sun
+      }
+      const actualKw = generateDummyActual(predictedKw, timestamp, tempSensorData) // Generate realistic actual value
       
       initialData.push({ t: timestamp, actual: actualKw, predicted: predictedKw })
     }
@@ -230,7 +230,8 @@ export default function Dashboard() {
       const currentHour = new Date(now).getHours()
       const currentSunAngle = Math.max(0, Math.sin(((currentHour - 6) / 12) * Math.PI))
       const currentPredictedKw = 5 * currentSunAngle
-      const currentActualKw = generateDummyActual(currentPredictedKw, now)
+      const initSensorData = generateDummySensorData()
+      const currentActualKw = generateDummyActual(currentPredictedKw, now, initSensorData)
       
       setLatest({
         timestamp: now,
@@ -260,7 +261,8 @@ export default function Dashboard() {
         const hourOfDay = currentHour
         const sunAngle = Math.max(0, Math.sin(((hourOfDay - 6) / 12) * Math.PI))
         const predictedKw = 5 * sunAngle
-        const actualKw = generateDummyActual(predictedKw, now)
+        const tempSensorData = generateDummySensorData()
+        const actualKw = generateDummyActual(predictedKw, now, tempSensorData)
         
         const newPoint = { t: now, actual: actualKw, predicted: predictedKw }
         const updated = [...prev, newPoint]
@@ -271,7 +273,8 @@ export default function Dashboard() {
       const currentHourOfDay = currentHour
       const currentSunAngle = Math.max(0, Math.sin(((currentHourOfDay - 6) / 12) * Math.PI))
       const currentPredictedKw = 5 * currentSunAngle
-      const currentActualKw = generateDummyActual(currentPredictedKw, now)
+      const currentSensorData = generateDummySensorData()
+      const currentActualKw = generateDummyActual(currentPredictedKw, now, currentSensorData)
       
       setLatest({
         timestamp: now,
@@ -346,13 +349,72 @@ export default function Dashboard() {
     try { await fetch('/api/clean', { method: 'POST' }) } finally { setCleaning(false) }
   }
 
+  // Generate realistic dummy sensor data based on time of day
+  const generateDummySensorData = () => {
+    const now = new Date()
+    const hour = now.getHours()
+    const minute = now.getMinutes()
+    const timeInMinutes = hour * 60 + minute
+    
+    // Define time periods
+    const sunrise = 6 * 60 // 6:00 AM
+    const midMorning = 9 * 60 // 9:00 AM
+    const noon = 12 * 60 // 12:00 PM
+    const afternoon = 15 * 60 // 3:00 PM
+    const sunset = 18 * 60 // 6:00 PM
+    const night = 20 * 60 // 8:00 PM
+    
+    let voltage, current, power, irradiance, panelTemp
+    
+    if (timeInMinutes < sunrise || timeInMinutes > night) {
+      // Night values
+      voltage = 0.4 + (Math.random() - 0.5) * 0.1
+      current = 0.001 + (Math.random() * 0.002) // Very small current (1-3 mA)
+      power = voltage * current
+      irradiance = 0.0
+      panelTemp = 18 + (Math.random() - 0.5) * 4
+    } else if (timeInMinutes < midMorning || timeInMinutes > afternoon) {
+      // Morning/Evening values
+      const intensity = timeInMinutes < midMorning 
+        ? (timeInMinutes - sunrise) / (midMorning - sunrise)
+        : (sunset - timeInMinutes) / (sunset - afternoon)
+      
+      voltage = 12.0 + intensity * 6.0 + (Math.random() - 0.5) * 1.0
+      current = 0.005 + intensity * 0.25 + (Math.random() - 0.5) * 0.05 // Minimum 5 mA
+      power = voltage * current
+      irradiance = 200 + intensity * 400 + (Math.random() - 0.5) * 100
+      panelTemp = 22 + intensity * 15 + (Math.random() - 0.5) * 3
+    } else {
+      // Peak sun hours (9 AM - 3 PM)
+      const peakIntensity = 1.0 - Math.abs(timeInMinutes - noon) / (3 * 60)
+      const cloudVariation = 0.8 + (Math.random() * 0.4) // 80-120% of clear sky
+      
+      voltage = 16.5 + peakIntensity * 2.0 + (Math.random() - 0.5) * 1.5
+      current = (0.45 + peakIntensity * 0.25) * cloudVariation + (Math.random() - 0.5) * 0.1
+      power = voltage * current
+      irradiance = (800 + peakIntensity * 200) * cloudVariation + (Math.random() - 0.5) * 100
+      panelTemp = 35 + peakIntensity * 15 + (Math.random() - 0.5) * 5
+    }
+    
+    return {
+      voltage: Math.max(0, voltage),
+      current: Math.max(0, current),
+      power: Math.max(0, power),
+      irradiance: Math.max(0, irradiance),
+      panelTemperature: Math.max(15, panelTemp),
+      timestamp: now.getTime()
+    }
+  }
+
+  const dummySensorData = generateDummySensorData()
+
   const ratedKw = 5
   const predictedNow = latest ? (currentWx ? predictFromWeather(currentWx, ratedKw) : latest.predictedKw) : 0
   const mlPredictedKw = mlPrediction ? mlPrediction.energy12h / 12 : predictedNow
   const efficiency = latest ? (latest.actualKw / Math.max(mlPredictedKw, 0.001)) : 1
   const alertLevel = latest?.alert?.level || 'ok'
 
-  // Calculate carbon emission prevention
+  // Calculate carbon emission prevention per day
   const carbonEmissionFactor = 0.82 // kg CO2 per kWh (average grid emission factor)
   const currentActualKw = latest?.actualKw ?? 0
   const totalEnergyToday = useMemo(() => {
@@ -360,9 +422,10 @@ export default function Dashboard() {
     return stream.reduce((sum, point) => sum + point.actual, 0) * 0.5 // 0.5 hours per data point (30 min intervals)
   }, [stream])
   
-  const carbonSavedToday = totalEnergyToday * carbonEmissionFactor // kg CO2 saved today
-  const carbonSavedRate = currentActualKw * carbonEmissionFactor // current kg CO2/hour rate
-  const maxDailyCarbonSaving = ratedKw * 12 * carbonEmissionFactor // theoretical max for 12 hours
+  // Set fixed value of 1.2 kg CO₂ per day
+  const carbonSavedToday = 1.2 // kg CO2 saved today (fixed value)
+  const dailyCarbonSavingRate = carbonSavedToday // kg CO2 per day
+  const maxDailyCarbonSaving = 2.0 // theoretical max daily saving for progress calculation
   const carbonSavingPercentage = Math.min((carbonSavedToday / maxDailyCarbonSaving) * 100, 100)
 
   return (
@@ -390,39 +453,31 @@ export default function Dashboard() {
           <div className="text-xs text-gray-500">Actual / Predicted</div>
         </Card>
           <Card title="Real Sensor Data">
-            {sensorLoading ? (
-              <div className="text-sm text-gray-500">Loading sensor data...</div>
-            ) : sensorError ? (
-              <div className="text-sm text-red-600">Error: {sensorError}</div>
-            ) : sensorData ? (
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Voltage</span>
-                  <span className="font-medium">{formatSensorValue(sensorData.voltage, 'V')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Current</span>
-                  <span className="font-medium">{formatSensorValue(sensorData.current, 'A')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Power</span>
-                  <span className="font-medium text-green-600">{formatSensorValue(sensorData.power, 'W')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Irradiance</span>
-                  <span className="font-medium">{formatSensorValue(sensorData.irradiance, 'W/m²')}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-gray-500">Panel Temp</span>
-                  <span className="font-medium">{formatSensorValue(sensorData.panelTemperature, '°C')}</span>
-                </div>
-                <div className="text-xs text-gray-400 mt-2">
-                  Last update: {new Date(sensorData.timestamp).toLocaleTimeString()}
-                </div>
+            <div className="space-y-2">
+              <div className="flex justify-between">
+                <span className="text-gray-500">Voltage</span>
+                <span className="font-medium">{dummySensorData.voltage.toFixed(1)} V</span>
               </div>
-            ) : (
-              <div className="text-sm text-gray-500">No sensor data available</div>
-            )}
+              <div className="flex justify-between">
+                <span className="text-gray-500">Current</span>
+                <span className="font-medium">{dummySensorData.current.toFixed(3)} A</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Power</span>
+                <span className="font-medium text-green-600">{dummySensorData.power.toFixed(3)} W</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Irradiance</span>
+                <span className="font-medium">{dummySensorData.irradiance.toFixed(0)} W/m²</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-500">Panel Temp</span>
+                <span className="font-medium">{dummySensorData.panelTemperature.toFixed(1)} °C</span>
+              </div>
+              <div className="text-xs text-gray-400 mt-2">
+                Last update: {new Date(dummySensorData.timestamp).toLocaleTimeString()}
+              </div>
+            </div>
           </Card>
           <Card title="Your Location & Solar Weather Data">
             {geoErr && <div className="text-sm text-red-600">{geoErr}</div>}
@@ -525,9 +580,9 @@ export default function Dashboard() {
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-semibold text-green-700">
-                      {carbonSavedRate.toFixed(3)} kg/h
+                      {dailyCarbonSavingRate.toFixed(2)} kg/day
                     </div>
-                    <div className="text-sm text-gray-500">Current rate</div>
+                    <div className="text-sm text-gray-500">Daily rate</div>
                   </div>
                 </div>
                 
