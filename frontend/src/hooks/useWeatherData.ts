@@ -38,13 +38,14 @@ export function useWeatherData(lat: number | null, lon: number | null) {
       try {
         setWeatherData(prev => ({ ...prev, loading: true, error: null }))
 
-        // Fetch weather data from Open-Meteo with correct parameters
-        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,cloud_cover,direct_radiation,diffuse_radiation,global_tilted_irradiance&daily=sunrise,sunset&timezone=auto`
+        // Fetch weather data from OpenWeatherMap API
+        const API_KEY = "2aabb707a4929ec328c31c34a79a912f"
+        const weatherUrl = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}`
         const weatherResponse = await fetch(weatherUrl)
         const weatherData = await weatherResponse.json()
 
         if (!weatherResponse.ok) {
-          throw new Error(weatherData.reason || 'Failed to fetch weather data')
+          throw new Error(weatherData.message || 'Failed to fetch weather data')
         }
 
         // Fetch city name using backend geocoding endpoint
@@ -64,21 +65,49 @@ export function useWeatherData(lat: number | null, lon: number | null) {
           cityName = `${lat.toFixed(4)}, ${lon.toFixed(4)}`
         }
 
-        const current = weatherData.current
-        const daily = weatherData.daily
-
-        // Safely extract sunrise/sunset with fallbacks
-        const sunrise = daily?.sunrise?.[0] || ''
-        const sunset = daily?.sunset?.[0] || ''
-
+        const main = weatherData.main || {}
+        const clouds = weatherData.clouds || {}
+        const sys = weatherData.sys || {}
+        const timezone = weatherData.timezone || 0
+        
+        // Get accurate sunrise/sunset data from dedicated endpoint
+        let sunrise = ''
+        let sunset = ''
+        
+        try {
+          const sunResponse = await fetch(`/api/sunrise-sunset?lat=${lat}&lon=${lon}`)
+          if (sunResponse.ok) {
+            const sunData = await sunResponse.json()
+            sunrise = sunData.sunrise
+            sunset = sunData.sunset
+          }
+        } catch (sunError) {
+          console.warn('Dedicated sunrise API failed, using OpenWeatherMap data:', sunError)
+          
+          // Fallback to OpenWeatherMap sunrise/sunset data
+          if (sys.sunrise && sys.sunset) {
+            const sunriseDate = new Date(sys.sunrise * 1000)
+            const sunsetDate = new Date(sys.sunset * 1000)
+            sunrise = sunriseDate.toISOString()
+            sunset = sunsetDate.toISOString()
+          }
+        }
+        
+        // Calculate radiation estimates based on weather conditions
+        const cloudCoverPercent = clouds.all || 0
+        const maxRadiation = 1000 // W/m² on clear day
+        const cloudFactor = 1 - (cloudCoverPercent / 100) * 0.75
+        const estimatedDirectRadiation = maxRadiation * cloudFactor
+        const estimatedDiffuseRadiation = maxRadiation * 0.1 * (1 + cloudCoverPercent / 100)
+        const estimatedTiltedIrradiance = estimatedDirectRadiation * 0.9 + estimatedDiffuseRadiation
 
         setWeatherData({
-          temperature: current?.temperature_2m || 0,
-          humidity: current?.relative_humidity_2m || 0,
-          cloudCover: current?.cloud_cover || 0,
-          directRadiation: current?.direct_radiation || 0,
-          diffuseRadiation: current?.diffuse_radiation || 0,
-          globalTiltedIrradiance: current?.global_tilted_irradiance || 0,
+          temperature: main.temp || 0,
+          humidity: main.humidity || 0,
+          cloudCover: cloudCoverPercent,
+          directRadiation: estimatedDirectRadiation,
+          diffuseRadiation: estimatedDiffuseRadiation,
+          globalTiltedIrradiance: estimatedTiltedIrradiance,
           sunrise: sunrise,
           sunset: sunset,
           cityName,
@@ -101,29 +130,34 @@ export function useWeatherData(lat: number | null, lon: number | null) {
   return weatherData
 }
 
-// Utility function to format time
+// Utility function to format time with local timezone support
 export function formatTime(timeString: string): string {
   if (!timeString) return 'N/A'
   try {
-    // Handle both ISO strings and time-only strings (HH:MM format)
-    let date: Date
+    // Handle ISO strings (full datetime)
     if (timeString.includes('T') || timeString.includes('Z')) {
-      // Full ISO string
-      date = new Date(timeString)
-    } else if (timeString.includes(':')) {
-      // Time-only string (HH:MM), create date for today
+      const date = new Date(timeString)
+      // Return in local time zone
+      return date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata' // India Standard Time
+      })
+    } 
+    // Handle time-only strings (HH:MM format)
+    else if (timeString.includes(':')) {
       const today = new Date()
       const [hours, minutes] = timeString.split(':').map(Number)
-      date = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes)
+      const date = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hours, minutes)
+      return date.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      })
     } else {
       return timeString
     }
-    
-    return date.toLocaleTimeString('en-US', {
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    })
   } catch (error) {
     console.warn('Error formatting time:', timeString, error)
     return timeString

@@ -98,7 +98,6 @@ export default function Dashboard() {
   const [currentWx, setCurrentWx] = useState<Weather | null>(null)
   const [geoErr, setGeoErr] = useState<string | null>(null)
   const [place, setPlace] = useState<string | null>(null)
-  const [predSeries, setPredSeries] = useState<Array<{ t: number; predicted: number }>>([])
   const [owmCurrent, setOwmCurrent] = useState<any | null>(null)
   const [owmAlerts, setOwmAlerts] = useState<Array<any>>([])
   const [showPredModal, setShowPredModal] = useState<boolean>(false)
@@ -213,19 +212,19 @@ export default function Dashboard() {
         const lon = pos.coords.longitude
         setGeo({ lat, lon })
         fetch(`/api/weather/current?lat=${lat}&lon=${lon}`).then(r => r.json()).then(setCurrentWx).catch(() => setGeoErr('Failed to fetch weather'))
-        fetch(`/api/prediction/openweather?lat=${lat}&lon=${lon}`).then(r => r.json()).then((d) => setPredSeries(d.series || [])).catch(() => {})
+        // Remove OpenWeather prediction fetch
         fetch(`/api/openweather/current?lat=${lat}&lon=${lon}`).then(r => r.json()).then((d) => { setOwmCurrent(d.current || null); setOwmAlerts(d.alerts || []); }).catch(() => {})
         // Reverse geocode for a human-readable location name
-        fetch(`https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=en`)
+        fetch(`/api/geocode?lat=${lat}&lon=${lon}`)
           .then(r => r.json())
           .then((g) => {
-            const r = (g && g.results && g.results[0]) || null
-            if (r) {
-              const parts = [r.name, r.admin1, r.country].filter(Boolean)
-              setPlace(parts.join(', '))
+            if (g && g.cityName) {
+              setPlace(g.cityName)
+            } else {
+              setPlace(`${lat.toFixed(4)}, ${lon.toFixed(4)}`)
             }
           })
-          .catch(() => {})
+          .catch(() => setPlace(`${lat.toFixed(4)}, ${lon.toFixed(4)}`))
       },
       (err) => {
         setGeoErr(err.message || 'Failed to get location')
@@ -247,7 +246,7 @@ export default function Dashboard() {
     
     return baseData
   }, [stream, mlPrediction])
-  const predictedChartData = useMemo(() => predSeries.map(p => ({ time: formatTime(p.t), Predicted: p.predicted })), [predSeries])
+  // Remove predictedChartData since OpenWeather prediction is removed
 
   async function triggerClean() {
     setCleaning(true)
@@ -472,31 +471,6 @@ export default function Dashboard() {
               </div>
             </Card>
 
-            <Card title="OpenWeather Prediction (5 min, ±2h)">
-              <div className="h-80">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={predictedChartData}>
-                    <defs>
-                      <linearGradient id="predFill" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#22c55e" stopOpacity={0.35} />
-                        <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="time" 
-                      minTickGap={20}
-                      tickFormatter={(value) => value}
-                      domain={['00:00', '24:00']}
-                    />
-                    <YAxis />
-                    <Tooltip />
-                    <Area type="monotone" dataKey="Predicted" stroke="#22c55e" strokeWidth={2} fill="url(#predFill)" />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-
             <Card title="ML Model Prediction (12h)">
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
@@ -558,7 +532,7 @@ export default function Dashboard() {
             </div>
               <div className="h-60">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={mlPrediction?.hourlyPredictions || predictedChartData}>
+                  <AreaChart data={mlPrediction?.hourlyPredictions || []}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="time" 
@@ -569,10 +543,10 @@ export default function Dashboard() {
                     <Tooltip />
                     <Area 
                       type="monotone" 
-                      dataKey={mlPrediction ? "predicted" : "Predicted"} 
-                      stroke={mlPrediction ? "#8b5cf6" : "#22c55e"} 
+                      dataKey="predicted" 
+                      stroke="#8b5cf6" 
                       strokeWidth={2} 
-                      fill={mlPrediction ? "#8b5cf622" : "#22c55e22"} 
+                      fill="#8b5cf622" 
                     />
                   </AreaChart>
                 </ResponsiveContainer>
