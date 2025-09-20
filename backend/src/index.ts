@@ -5,6 +5,7 @@ import http from 'http';
 import { WebSocketServer } from 'ws';
 import { createTelemetrySimulator } from './services/telemetry';
 import { ThingSpeakClient } from './services/thingspeak';
+import { thingSpeakReader } from './services/thingspeakReader';
 import { createDigitalTwin } from './services/digitalTwin';
 import { AlertService } from './services/alerts';
 import { CleaningService } from './services/cleaning';
@@ -160,6 +161,44 @@ app.get('/api/geocode', async (req, res) => {
     res.status(500).json({ error: 'Failed to geocode location' });
   }
 });
+
+// ThingSpeak sensor data endpoints
+app.get('/api/thingspeak/latest', async (req, res) => {
+  try {
+    const data = await thingSpeakReader.getLatestData()
+    if (!data) {
+      return res.status(404).json({ error: 'No sensor data available' })
+    }
+    res.json(data)
+  } catch (err) {
+    console.error('ThingSpeak latest data error:', err)
+    res.status(500).json({ error: 'Failed to fetch latest sensor data' })
+  }
+})
+
+app.get('/api/thingspeak/historical', async (req, res) => {
+  try {
+    const results = Number(req.query.results) || 10
+    const data = await thingSpeakReader.getHistoricalData(results)
+    res.json({ data })
+  } catch (err) {
+    console.error('ThingSpeak historical data error:', err)
+    res.status(500).json({ error: 'Failed to fetch historical sensor data' })
+  }
+})
+
+app.get('/api/thingspeak/channel', async (req, res) => {
+  try {
+    const channelInfo = await thingSpeakReader.getChannelInfo()
+    if (!channelInfo) {
+      return res.status(404).json({ error: 'Channel information not available' })
+    }
+    res.json(channelInfo)
+  } catch (err) {
+    console.error('ThingSpeak channel info error:', err)
+    res.status(500).json({ error: 'Failed to fetch channel information' })
+  }
+})
 
 // News proxy endpoint - keeps API key secure on backend
 app.get('/api/news', async (req, res) => {

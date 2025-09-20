@@ -12,6 +12,7 @@ import {
   Legend
 } from 'recharts'
 import { useWeatherData, formatTime as formatWeatherTime } from '../hooks/useWeatherData'
+import { useThingSpeakData, formatSensorValue, getSensorStatus } from '../hooks/useThingSpeakData'
 
 type Weather = { temperatureC: number; humidity: number; cloudCover: number; sunlightRatio: number }
 type NewsArticle = {
@@ -108,18 +109,21 @@ export default function Dashboard() {
 
   // Use the enhanced weather data hook
   const enhancedWeather = useWeatherData(geo?.lat || null, geo?.lon || null)
+  
+  // Use ThingSpeak sensor data hook
+  const { latestData: sensorData, historicalData, loading: sensorLoading, error: sensorError } = useThingSpeakData()
 
   useEffect(() => {
     fetch('/api/config').then(r => r.json()).then(cfg => setThreshold(cfg.threshold))
   }, [])
 
-  // News fetching functions
+  // News fetching functions - now using secure backend proxy
   const fetchNews = async (topic: string): Promise<NewsArticle[]> => {
     try {
-      const apiKey = '13851dc74c8944a58e0b7209d4154320'
-      const encodedTopic = encodeURIComponent(topic)
-      const url = `https://newsdata.io/api/1/latest?apikey=${apiKey}&q=${encodedTopic}`
-      const response = await fetch(url)
+      const response = await fetch(`/api/news?topic=${encodeURIComponent(topic)}`)
+      if (!response.ok) {
+        throw new Error(`Backend error: ${response.status}`)
+      }
       const data = await response.json()
       return data.results || []
     } catch (error) {
@@ -211,7 +215,7 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="p-4 md:p-6 lg:p-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-4 mb-6">
           <Card title="Actual Output (kW)">
             <BigNumber value={latest?.actualKw ?? 0} />
           </Card>
@@ -224,6 +228,41 @@ export default function Dashboard() {
           <Card title="Efficiency">
             <div className="text-3xl font-semibold">{(efficiency * 100).toFixed(1)}%</div>
             <div className="text-xs text-gray-500">Actual / Predicted</div>
+          </Card>
+          <Card title="Real Sensor Data">
+            {sensorLoading ? (
+              <div className="text-sm text-gray-500">Loading sensor data...</div>
+            ) : sensorError ? (
+              <div className="text-sm text-red-600">Error: {sensorError}</div>
+            ) : sensorData ? (
+              <div className="space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Voltage</span>
+                  <span className="font-medium">{formatSensorValue(sensorData.voltage, 'V')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Current</span>
+                  <span className="font-medium">{formatSensorValue(sensorData.current, 'A')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Power</span>
+                  <span className="font-medium text-green-600">{formatSensorValue(sensorData.power, 'W')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Irradiance</span>
+                  <span className="font-medium">{formatSensorValue(sensorData.irradiance, 'W/m²')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500">Panel Temp</span>
+                  <span className="font-medium">{formatSensorValue(sensorData.panelTemperature, '°C')}</span>
+                </div>
+                <div className="text-xs text-gray-400 mt-2">
+                  Last update: {new Date(sensorData.timestamp).toLocaleTimeString()}
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500">No sensor data available</div>
+            )}
           </Card>
           <Card title="Your Location & Solar Weather Data">
             {geoErr && <div className="text-sm text-red-600">{geoErr}</div>}
@@ -320,12 +359,34 @@ export default function Dashboard() {
           </div>
 
           <div className="space-y-6">
-            <Card title="Alerts">
+            <Card title="Alerts & Status">
               {latest?.alert ? (
                 <AlertBanner level={alertLevel} message={latest.alert.message} ratio={latest.alert.ratio} />
               ) : (
-                <div className="text-sm text-gray-500">No alerts</div>
+                <div className="text-sm text-gray-500">No system alerts</div>
               )}
+              
+              {/* Sensor Status */}
+              <div className="mt-3 p-2 bg-gray-50 rounded-md">
+                <div className="text-xs font-medium text-gray-600 mb-1">Sensor Status</div>
+                {sensorData ? (
+                  (() => {
+                    const status = getSensorStatus(sensorData)
+                    const statusColor = status.status === 'active' ? 'text-green-600' : 
+                                     status.status === 'standby' ? 'text-yellow-600' : 
+                                     status.status === 'offline' ? 'text-red-600' : 'text-gray-600'
+                    return (
+                      <div className={`text-xs ${statusColor}`}>
+                        <div className="font-medium capitalize">{status.status}</div>
+                        <div>{status.message}</div>
+                      </div>
+                    )
+                  })()
+                ) : (
+                  <div className="text-xs text-gray-500">No sensor data</div>
+                )}
+              </div>
+
               <div className="mt-4 flex items-center gap-3">
                 <button onClick={triggerClean} disabled={cleaning} className="inline-flex items-center gap-2 rounded-md bg-indigo-600 px-4 py-2 text-white hover:bg-indigo-500 disabled:opacity-50">
                   {cleaning ? 'Cleaning…' : 'Trigger Cleaning'}

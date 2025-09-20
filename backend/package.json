@@ -10,11 +10,13 @@
     "lint": "eslint 'src/**/*.{ts,tsx}'"
   },
   "dependencies": {
+    "@types/node-fetch": "^2.6.13",
+    "axios": "^1.7.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "ws": "^8.18.0",
-    "axios": "^1.7.7"
+    "node-fetch": "^3.3.2",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
@@ -22,9 +24,7 @@
     "@types/node": "^20.12.12",
     "@types/ws": "^8.5.10",
     "eslint": "^9.9.0",
-    "typescript": "^5.5.4",
-    "ts-node-dev": "^2.0.0"
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.5.4"
   }
 }
-
-
