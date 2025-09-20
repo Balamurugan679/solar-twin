@@ -72,6 +72,33 @@ function predictFromWeather(weather: Weather, ratedKw: number): number {
 }
 
 export default function Dashboard() {
+  // Generate dummy actual output that changes every hour
+  const generateDummyActual = (predicted: number, timestamp: number): number => {
+    const hourOfDay = new Date(timestamp).getHours()
+    const minuteOfDay = new Date(timestamp).getMinutes()
+    
+    // Base efficiency that varies by hour (morning ramp up, afternoon peak, evening decline)
+    let baseEfficiency = 0.75 // Base 75% efficiency
+    if (hourOfDay >= 6 && hourOfDay <= 8) baseEfficiency = 0.65 // Morning ramp
+    else if (hourOfDay >= 9 && hourOfDay <= 15) baseEfficiency = 0.85 // Peak hours
+    else if (hourOfDay >= 16 && hourOfDay <= 18) baseEfficiency = 0.70 // Afternoon decline
+    else baseEfficiency = 0.40 // Early morning/evening
+    
+    // Add hourly variation (changes every hour)
+    const hourlyVariation = Math.sin((hourOfDay + minuteOfDay/60) * Math.PI / 6) * 0.1
+    
+    // Add some random fluctuation but keep it realistic
+    const randomFluctuation = (Math.random() - 0.5) * 0.15
+    
+    // Weather-based reduction (simulated)
+    const weatherReduction = Math.random() * 0.1 // 0-10% weather impact
+    
+    // Calculate final efficiency (ensure it's always less than predicted)
+    const totalEfficiency = Math.max(0.3, Math.min(0.9, baseEfficiency + hourlyVariation + randomFluctuation - weatherReduction))
+    
+    return Math.max(0, predicted * totalEfficiency)
+  }
+
   const [stream, setStream] = useState<Array<{ t: number; actual: number; predicted: number }>>(() => {
     // Generate initial historical data points for a 12-hour day at 30-minute intervals
     const now = new Date()
@@ -82,12 +109,10 @@ export default function Dashboard() {
       const timestamp = today.getTime() + (i * 30 * 60 * 1000) // 30-minute intervals from midnight
       const hourOfDay = (i * 30) / 60 // Current hour (0-12)
       const sunAngle = Math.max(0, Math.sin(((hourOfDay - 6) / 12) * Math.PI)) // Sun angle from 6 AM to 6 PM
-      const dirtLoss = 0.05 + 0.15 * Math.max(0, Math.sin((i * 30) / 120)) // Varying dirt over 2 hours
-      const noise = (Math.random() - 0.5) * 0.05
       
       const idealKw = 5 * sunAngle // 5kW rated
-      const actualKw = Math.max(0, idealKw * (1 - dirtLoss + noise))
       const predictedKw = idealKw
+      const actualKw = generateDummyActual(predictedKw, timestamp) // Generate realistic actual value
       
       initialData.push({ t: timestamp, actual: actualKw, predicted: predictedKw })
     }
@@ -198,25 +223,72 @@ export default function Dashboard() {
     }
   }, [geo?.lat, geo?.lon])
 
+  // Initialize latest data with current dummy values
   useEffect(() => {
-    const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws')
-    wsRef.current = ws
-    ws.onmessage = (ev) => {
-      const msg: TelemetryMsg = JSON.parse(ev.data)
-      if (msg.type === 'telemetry') {
-        const d = msg.data
-        setLatest(d)
-        setStream(prev => {
-          // Use user's geolocated weather prediction when available; otherwise fallback to backend
-          const ratedKw = 5 // matches backend simulator ratedKw
-          const localPred = currentWx ? predictFromWeather(currentWx, ratedKw) : undefined
-          const predicted = localPred != null ? localPred : d.predictedKw
-          const next = [...prev, { t: d.timestamp, actual: d.actualKw, predicted }]
-          return next.slice(-25) // keep last 12 hours at 30min cadence (25 points = 12h + 12:00)
-        })
-      }
+    if (!latest) {
+      const now = Date.now()
+      const currentHour = new Date(now).getHours()
+      const currentSunAngle = Math.max(0, Math.sin(((currentHour - 6) / 12) * Math.PI))
+      const currentPredictedKw = 5 * currentSunAngle
+      const currentActualKw = generateDummyActual(currentPredictedKw, now)
+      
+      setLatest({
+        timestamp: now,
+        actualKw: currentActualKw,
+        predictedKw: currentPredictedKw,
+        weather: currentWx || {
+          temperatureC: 25,
+          humidity: 60,
+          cloudCover: 0.3,
+          sunlightRatio: currentSunAngle
+        },
+        ratio: Math.abs(currentPredictedKw - currentActualKw) / Math.max(currentPredictedKw, 0.001),
+        alert: null
+      })
     }
-    return () => ws.close()
+  }, [currentWx, latest])
+
+  // Add dummy data simulation that updates every hour
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now()
+      const currentHour = new Date(now).getHours()
+      const currentMinute = new Date(now).getMinutes()
+      
+      // Update stream with new dummy data point
+      setStream(prev => {
+        const hourOfDay = currentHour
+        const sunAngle = Math.max(0, Math.sin(((hourOfDay - 6) / 12) * Math.PI))
+        const predictedKw = 5 * sunAngle
+        const actualKw = generateDummyActual(predictedKw, now)
+        
+        const newPoint = { t: now, actual: actualKw, predicted: predictedKw }
+        const updated = [...prev, newPoint]
+        return updated.slice(-25) // Keep last 25 points (12 hours)
+      })
+      
+      // Update latest data for dashboard cards
+      const currentHourOfDay = currentHour
+      const currentSunAngle = Math.max(0, Math.sin(((currentHourOfDay - 6) / 12) * Math.PI))
+      const currentPredictedKw = 5 * currentSunAngle
+      const currentActualKw = generateDummyActual(currentPredictedKw, now)
+      
+      setLatest({
+        timestamp: now,
+        actualKw: currentActualKw,
+        predictedKw: currentPredictedKw,
+        weather: currentWx || {
+          temperatureC: 25,
+          humidity: 60,
+          cloudCover: 0.3,
+          sunlightRatio: currentSunAngle
+        },
+        ratio: Math.abs(currentPredictedKw - currentActualKw) / Math.max(currentPredictedKw, 0.001),
+        alert: null
+      })
+    }, 60000) // Update every minute for smooth transitions
+    
+    return () => clearInterval(interval)
   }, [currentWx])
 
   // Request geolocation and fetch current weather for the user's coordinates
@@ -279,6 +351,19 @@ export default function Dashboard() {
   const mlPredictedKw = mlPrediction ? mlPrediction.energy12h / 12 : predictedNow
   const efficiency = latest ? (latest.actualKw / Math.max(mlPredictedKw, 0.001)) : 1
   const alertLevel = latest?.alert?.level || 'ok'
+
+  // Calculate carbon emission prevention
+  const carbonEmissionFactor = 0.82 // kg CO2 per kWh (average grid emission factor)
+  const currentActualKw = latest?.actualKw ?? 0
+  const totalEnergyToday = useMemo(() => {
+    // Calculate total energy generated today from stream data
+    return stream.reduce((sum, point) => sum + point.actual, 0) * 0.5 // 0.5 hours per data point (30 min intervals)
+  }, [stream])
+  
+  const carbonSavedToday = totalEnergyToday * carbonEmissionFactor // kg CO2 saved today
+  const carbonSavedRate = currentActualKw * carbonEmissionFactor // current kg CO2/hour rate
+  const maxDailyCarbonSaving = ratedKw * 12 * carbonEmissionFactor // theoretical max for 12 hours
+  const carbonSavingPercentage = Math.min((carbonSavedToday / maxDailyCarbonSaving) * 100, 100)
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -427,7 +512,81 @@ export default function Dashboard() {
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-          <div className="xl:col-span-2">
+          <div className="xl:col-span-2 space-y-4">
+            {/* Carbon Emission Prevention Indicator */}
+            <Card title="Carbon Emission Prevention">
+              <div className="space-y-4">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <div className="text-2xl font-bold text-green-600">
+                      {carbonSavedToday.toFixed(2)} kg CO₂
+                    </div>
+                    <div className="text-sm text-gray-500">Prevented today</div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-lg font-semibold text-green-700">
+                      {carbonSavedRate.toFixed(3)} kg/h
+                    </div>
+                    <div className="text-sm text-gray-500">Current rate</div>
+                  </div>
+                </div>
+                
+                {/* Horizontal progress bar */}
+                <div className="w-full">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-sm text-gray-600">Daily Progress</span>
+                    <span className="text-sm font-medium text-gray-700">
+                      {carbonSavingPercentage.toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-4 relative overflow-hidden">
+                    <div 
+                      className="h-4 bg-gradient-to-r from-green-400 to-green-600 rounded-full transition-all duration-300 ease-out"
+                      style={{ width: `${Math.min(carbonSavingPercentage, 100)}%` }}
+                    >
+                      <div className="h-full bg-gradient-to-r from-transparent to-white opacity-20 rounded-full"></div>
+                    </div>
+                    {/* Animated shimmer effect */}
+                    {carbonSavingPercentage > 0 && (
+                      <div 
+                        className="absolute top-0 left-0 h-full w-4 bg-gradient-to-r from-transparent via-white to-transparent opacity-50 animate-pulse"
+                        style={{
+                          transform: `translateX(${Math.min(carbonSavingPercentage * 4, 100)}px)`,
+                          transition: 'transform 2s ease-in-out'
+                        }}
+                      ></div>
+                    )}
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>0 kg</span>
+                    <span>{maxDailyCarbonSaving.toFixed(1)} kg (max)</span>
+                  </div>
+                </div>
+                
+                {/* Additional stats */}
+                <div className="grid grid-cols-3 gap-4 pt-3 border-t border-gray-100">
+                  <div className="text-center">
+                    <div className="text-lg font-semibold text-blue-600">
+                      {(totalEnergyToday * 365).toFixed(0)}
+                    </div>
+                    <div className="text-xs text-gray-500">Annual est. (kWh)</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-semibold text-purple-600">
+                      {(carbonSavedToday * 365).toFixed(0)}
+                    </div>
+                    <div className="text-xs text-gray-500">Annual CO₂ (kg)</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-semibold text-orange-600">
+                      {(carbonSavedToday * 365 / 1000 * 2.5).toFixed(1)}
+                    </div>
+                    <div className="text-xs text-gray-500">Trees equiv.</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+            
             <Card title="Real vs Predicted Energy (kW)">
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
