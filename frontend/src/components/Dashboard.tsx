@@ -169,7 +169,7 @@ export default function Dashboard() {
       setGemologyNews(gemology)
       
       // Combine all news for auto-scrolling (4 articles total)
-      const combinedNews = [...weather, ...gemology].slice(0, 4)
+      const combinedNews = [...weather, ...gemology].slice(0, 5)
       setAllNews(combinedNews)
     }
     loadNews()
@@ -181,7 +181,7 @@ export default function Dashboard() {
     
     const interval = setInterval(() => {
       setCurrentNewsIndex((prev) => (prev + 1) % allNews.length)
-    }, 5000) // 5 seconds
+    }, 10000) // 5 seconds
     
     return () => clearInterval(interval)
   }, [allNews.length])
@@ -565,7 +565,7 @@ export default function Dashboard() {
                     <div 
                       className="bg-blue-500 h-1 rounded-full transition-all duration-100 ease-linear"
                       style={{
-                        animation: 'progress 5s linear infinite'
+                        animation: 'progress 10s linear infinite'
                       }}
                     />
                   </div>
