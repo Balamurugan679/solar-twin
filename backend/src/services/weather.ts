@@ -22,29 +22,64 @@ export class WeatherProvider {
   }
 }
 
-export async function fetchWeatherFromOpenMeteo(lat: number, lon: number): Promise<WeatherSnapshot> {
-  const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,cloud_cover&hourly=shortwave_radiation&timezone=auto`;
-  const res = await fetch(url, { headers: { 'accept': 'application/json' } as any });
-  if (!res.ok) throw new Error(`Open-Meteo error: ${res.status}`);
-  const data = await res.json() as any;
-  const current = data.current || {};
-  const temperatureC = Number(current.temperature_2m ?? 20);
-  const humidity = Number(current.relative_humidity_2m ?? 50);
-  const cloudCover = Math.min(1, Math.max(0, Number(current.cloud_cover ?? 50) / 100));
-
-  // Approximate sunlight ratio using hourly shortwave radiation vs a typical clear-sky max
-  let sunlightRatio = 0.0;
-  try {
-    const hourly = data.hourly || {};
-    const timeIndex = (hourly.time as string[] | undefined)?.indexOf(current.time);
-    if (timeIndex != null && timeIndex >= 0) {
-      const sw = Number((hourly.shortwave_radiation as number[] | undefined)?.[timeIndex] ?? 0);
-      const clearSkyTypical = 800; // W/m2
-      sunlightRatio = Math.max(0, Math.min(1, sw / clearSkyTypical));
-    }
-  } catch {}
-
-  return { temperatureC, humidity, cloudCover, sunlightRatio };
+export async function fetchWeatherFromOpenWeatherMap(lat: number, lon: number): Promise<WeatherSnapshot> {
+  const API_KEY = "2aabb707a4929ec328c31c34a79a912f"
+  const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${API_KEY}`
+  
+  const res = await fetch(url, { headers: { 'accept': 'application/json' } as any })
+  if (!res.ok) throw new Error(`OpenWeatherMap error: ${res.status}`)
+  
+  const data = await res.json() as any
+  
+  const main = data.main || {}
+  const clouds = data.clouds || {}
+  const weather = data.weather?.[0] || {}
+  const sys = data.sys || {}
+  
+  const temperatureC = Number(main.temp ?? 20)
+  const humidity = Number(main.humidity ?? 50)
+  const cloudCover = Math.min(1, Math.max(0, Number(clouds.all ?? 50) / 100))
+  
+  // Enhanced sunlight ratio calculation using time of day and weather conditions
+  let sunlightRatio = 0.5 // default
+  
+  // Get current hour to factor in day/night cycle
+  const now = new Date()
+  const currentHour = now.getHours()
+  
+  // Basic day/night cycle (0 at night, peak at noon)
+  let dayFactor = 0
+  if (currentHour >= 6 && currentHour <= 18) {
+    const hourFromNoon = Math.abs(currentHour - 12)
+    dayFactor = Math.max(0, Math.cos((hourFromNoon / 6) * (Math.PI / 2)))
+  }
+  
+  // Weather condition factor
+  const weatherMain = weather.main?.toLowerCase() || ''
+  let weatherFactor = 0.7 // default
+  
+  if (weatherMain.includes('clear')) {
+    weatherFactor = 0.95
+  } else if (weatherMain.includes('few clouds') || weatherMain.includes('scattered')) {
+    weatherFactor = 0.8
+  } else if (weatherMain.includes('broken') || weatherMain.includes('overcast')) {
+    weatherFactor = 0.4
+  } else if (weatherMain.includes('rain') || weatherMain.includes('storm')) {
+    weatherFactor = 0.2
+  } else if (weatherMain.includes('snow')) {
+    weatherFactor = 0.3
+  }
+  
+  // Cloud cover factor (0-1)
+  const cloudFactor = 1 - (cloudCover * 0.75)
+  
+  // Combine all factors
+  sunlightRatio = dayFactor * weatherFactor * cloudFactor
+  
+  // Ensure ratio stays within bounds
+  sunlightRatio = Math.max(0, Math.min(1, sunlightRatio))
+  
+  return { temperatureC, humidity, cloudCover, sunlightRatio }
 }
 
 

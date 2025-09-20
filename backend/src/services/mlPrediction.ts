@@ -7,13 +7,13 @@ interface WeatherData {
 }
 
 interface PredictionResult {
-  energy12h: number
+  energy12h: number            // kWh (for next 12h)
   hourlyPredictions: Array<{
-    timestamp: number
-    power: number
-    energy: number
+    time: string
+    predicted: number          // kW
   }>
   weatherData: WeatherData
+  timestamp: number
 }
 
 export class MLPredictionService {
@@ -24,8 +24,8 @@ export class MLPredictionService {
   // Panel configuration
   private readonly P_STC = 0.3 // 0.3 kW = 300W panel
   private readonly EFF_DC_AC = 0.85
-  private readonly LAT = 13.0838
-  private readonly LON = 79.6663
+  private readonly LAT = 13.0083  // Chennai latitude
+  private readonly LON = 80.0056  // Chennai longitude
   private readonly TZ = "Asia/Kolkata"
 
   async getPredictedEnergy(lat?: number, lon?: number): Promise<PredictionResult> {
@@ -52,7 +52,7 @@ export class MLPredictionService {
 
   private async getWeatherData(lat: number, lon: number): Promise<WeatherData> {
     try {
-      const url = `http://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${this.API_KEY}`
+      const url = `https://api.openweathermap.org/data/2.5/weather?lat=${lat}&lon=${lon}&units=metric&appid=${this.API_KEY}`
       const response = await axios.get(url, { timeout: 10000 })
       return response.data
     } catch (error) {
@@ -68,14 +68,14 @@ export class MLPredictionService {
 
   private calculatePredictions(weatherData: WeatherData, lat: number, lon: number): PredictionResult {
     const now = new Date()
-    const hourlyPredictions: Array<{ timestamp: number; power: number; energy: number }> = []
+    const hourlyPredictions: Array<{ time: string; predicted: number }> = []
     
-    // Generate predictions for next 12 hours (every 10 minutes = 72 points)
+    // Generate predictions for next 12 hours 
     let totalEnergy = 0
     
-    for (let i = 0; i < 72; i++) {
-      const timestamp = new Date(now.getTime() + i * 10 * 60 * 1000) // 10 minutes intervals
-      const hourOfDay = timestamp.getHours()
+    for (let i = 0; i < 12; i++) {
+      const futureTime = new Date(now.getTime() + i * 60 * 60 * 1000) // 1 hour intervals
+      const hourOfDay = futureTime.getHours()
       
       // Simplified solar angle calculation (peak at noon)
       const sunAngle = Math.max(0, Math.sin(((hourOfDay - 6) / 12) * Math.PI))
@@ -93,23 +93,26 @@ export class MLPredictionService {
       // Calculate power
       const ghi = 1000 * sunAngle * tCloud // Simplified GHI calculation
       const pDc = this.P_STC * (ghi / 1000.0) * tempDerate
-      const pAc = pDc * this.EFF_DC_AC
+      const pAc = Math.max(0, pDc * this.EFF_DC_AC)
       
-      // Convert to energy (kWh) for 10-minute period
-      const energy = pAc * (10 / 60) // 10 minutes = 10/60 hours
-      totalEnergy += energy
+      // Add to total energy (assuming 1 hour = 1 kWh per kW)
+      totalEnergy += pAc
       
       hourlyPredictions.push({
-        timestamp: timestamp.getTime(),
-        power: pAc,
-        energy: energy
+        time: futureTime.toLocaleTimeString('en-US', {
+          hour: '2-digit',
+          minute: '2-digit',
+          hour12: false
+        }),
+        predicted: parseFloat(pAc.toFixed(3))
       })
     }
 
     return {
-      energy12h: totalEnergy,
+      energy12h: parseFloat(totalEnergy.toFixed(3)),
       hourlyPredictions,
-      weatherData
+      weatherData,
+      timestamp: now.getTime()
     }
   }
 
@@ -135,17 +138,11 @@ export class MLPredictionService {
     }
   }
 
-  // Get hourly predictions for chart display
+  // Get hourly predictions for chart display (already in the right format)
   getHourlyPredictions(predictions: PredictionResult): Array<{ time: string; predicted: number }> {
     return predictions.hourlyPredictions
-      .filter((_, index) => index % 6 === 0) // Every hour (6 * 10min = 1 hour)
-      .map(p => ({
-        time: new Date(p.timestamp).toLocaleTimeString('en-US', { 
-          hour: '2-digit', 
-          minute: '2-digit',
-          hour12: false 
-        }),
-        predicted: p.power
-      }))
   }
 }
+
+// Export singleton instance
+export const mlPredictionService = new MLPredictionService()

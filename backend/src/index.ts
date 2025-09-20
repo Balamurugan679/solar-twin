@@ -9,9 +9,9 @@ import { thingSpeakReader } from './services/thingspeakReader';
 import { createDigitalTwin } from './services/digitalTwin';
 import { AlertService } from './services/alerts';
 import { CleaningService } from './services/cleaning';
-import { WeatherProvider, fetchWeatherFromOpenMeteo } from './services/weather';
+import { WeatherProvider, fetchWeatherFromOpenWeatherMap } from './services/weather';
 import { fetchOpenWeather, resampleToFiveMinutes } from './services/openweather';
-import { MLPredictionService } from './services/mlPrediction';
+import { mlPredictionService } from './services/mlPrediction';
 
 const PORT = Number(process.env.PORT || 4000);
 const THRESHOLD = Number(process.env.ALERT_THRESHOLD || 0.2); // 20%
@@ -28,7 +28,7 @@ const twin = createDigitalTwin(weatherProvider);
 const alerts = new AlertService(THRESHOLD);
 const cleaning = new CleaningService();
 const telemetry = createTelemetrySimulator();
-const mlPrediction = new MLPredictionService();
+const mlPrediction = mlPredictionService;
 const thingspeakKey = process.env.TS_WRITE_KEY;
 const thingSpeak = thingspeakKey ? new ThingSpeakClient({ apiKey: thingspeakKey }) : null;
 
@@ -71,10 +71,61 @@ app.get('/api/weather/current', async (req, res) => {
     if (!isFinite(lat) || !isFinite(lon)) {
       return res.status(400).json({ error: 'lat and lon are required' });
     }
-    const snapshot = await fetchWeatherFromOpenMeteo(lat, lon);
+    const snapshot = await fetchWeatherFromOpenWeatherMap(lat, lon);
     res.json(snapshot);
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch weather' });
+  }
+});
+
+// Sunrise/Sunset endpoint with high accuracy
+app.get('/api/sunrise-sunset', async (req, res) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    if (!isFinite(lat) || !isFinite(lon)) {
+      return res.status(400).json({ error: 'lat and lon are required' });
+    }
+    
+    // Use sunrise-sunset.org API for high accuracy
+    const sunUrl = `https://api.sunrise-sunset.org/json?lat=${lat}&lng=${lon}&formatted=0`;
+    const sunResponse = await fetch(sunUrl);
+    
+    if (!sunResponse.ok) {
+      throw new Error(`Sunrise API error: ${sunResponse.status}`);
+    }
+    
+    const sunData = await sunResponse.json();
+    
+    if (sunData.status !== 'OK') {
+      throw new Error('Sunrise API returned error status');
+    }
+    
+    // Convert to India Standard Time for display
+    const sunrise = new Date(sunData.results.sunrise);
+    const sunset = new Date(sunData.results.sunset);
+    
+    res.json({
+      sunrise: sunData.results.sunrise,
+      sunset: sunData.results.sunset,
+      sunriseLocal: sunrise.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Kolkata'
+      }),
+      sunsetLocal: sunset.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit', 
+        hour12: true,
+        timeZone: 'Asia/Kolkata'
+      }),
+      solarNoon: sunData.results.solar_noon,
+      dayLength: sunData.results.day_length
+    });
+  } catch (err) {
+    console.error('Sunrise/sunset API error:', err);
+    res.status(500).json({ error: 'Failed to fetch sunrise/sunset data' });
   }
 });
 
@@ -126,9 +177,9 @@ app.get('/api/prediction/ml', async (req, res) => {
     
     res.json({
       energy12h: prediction.energy12h,
-      hourlyPredictions: mlPrediction.getHourlyPredictions(prediction),
+      hourlyPredictions: prediction.hourlyPredictions,
       weatherData: prediction.weatherData,
-      timestamp: Date.now()
+      timestamp: prediction.timestamp
     });
   } catch (err) {
     console.error('ML prediction error:', err);
@@ -160,18 +211,19 @@ app.get('/api/geocode', async (req, res) => {
     const coordKey = `${lat.toFixed(4)},${lon.toFixed(4)}`;
     cityName = knownLocations[coordKey] || knownLocations[`${lat.toFixed(5)},${lon.toFixed(5)}`] || '';
     
-    // Try Open-Meteo geocoding if not found in known locations
+    // Try OpenWeatherMap reverse geocoding if not found in known locations
     if (!cityName) {
       try {
-        const geoResponse = await fetch(`https://geocoding-api.open-meteo.com/v1/reverse?latitude=${lat}&longitude=${lon}&language=en`);
-        const geoData = await geoResponse.json();
-        if (geoData.results && geoData.results[0]) {
-          const result = geoData.results[0];
-          const parts = [result.name, result.admin1, result.country].filter(Boolean);
-          cityName = parts.join(', ');
+        const API_KEY = "2aabb707a4929ec328c31c34a79a912f"
+        const geoResponse = await fetch(`https://api.openweathermap.org/geo/1.0/reverse?lat=${lat}&lon=${lon}&limit=1&appid=${API_KEY}`)
+        const geoData = await geoResponse.json()
+        if (geoData && geoData[0]) {
+          const result = geoData[0]
+          const parts = [result.name, result.state, result.country].filter(Boolean)
+          cityName = parts.join(', ')
         }
       } catch (error) {
-        console.warn('Open-Meteo geocoding failed:', error);
+        console.warn('OpenWeatherMap geocoding failed:', error)
       }
     }
 
