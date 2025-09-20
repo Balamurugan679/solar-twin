@@ -4,6 +4,8 @@ import {
   Line,
   AreaChart,
   Area,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -40,16 +42,16 @@ function formatTime(ts: number) {
   const hours = d.getHours()
   const minutes = d.getMinutes()
   
-  // Handle 24:00 case (when it's exactly midnight of the next day)
-  if (hours === 0 && minutes === 0) {
-    // Check if this is the last data point (24:00)
+  // Handle 12:00 case (when it's exactly noon or the 12-hour mark)
+  if (hours === 12 && minutes === 0) {
+    // Check if this is the last data point for 12-hour period
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const timeDiff = ts - today.getTime()
     const totalMinutes = timeDiff / (1000 * 60)
     
-    if (totalMinutes >= 1440) { // 24 hours = 1440 minutes
-      return '24:00'
+    if (totalMinutes >= 720) { // 12 hours = 720 minutes
+      return '12:00'
     }
   }
   
@@ -71,16 +73,16 @@ function predictFromWeather(weather: Weather, ratedKw: number): number {
 
 export default function Dashboard() {
   const [stream, setStream] = useState<Array<{ t: number; actual: number; predicted: number }>>(() => {
-    // Generate initial historical data points for a full 24-hour day at 10-minute intervals
+    // Generate initial historical data points for a 12-hour day at 30-minute intervals
     const now = new Date()
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()) // Start of today
     const initialData = []
     
-    for (let i = 0; i <= 144; i++) { // 145 points = 24 hours at 10min intervals + 24:00
-      const timestamp = today.getTime() + (i * 10 * 60 * 1000) // 10-minute intervals from midnight
-      const hourOfDay = (i * 10) / 60 // Current hour (0-24)
+    for (let i = 0; i <= 24; i++) { // 25 points = 12 hours at 30min intervals + 12:00
+      const timestamp = today.getTime() + (i * 30 * 60 * 1000) // 30-minute intervals from midnight
+      const hourOfDay = (i * 30) / 60 // Current hour (0-12)
       const sunAngle = Math.max(0, Math.sin(((hourOfDay - 6) / 12) * Math.PI)) // Sun angle from 6 AM to 6 PM
-      const dirtLoss = 0.05 + 0.15 * Math.max(0, Math.sin((i * 10) / 120)) // Varying dirt over 2 hours
+      const dirtLoss = 0.05 + 0.15 * Math.max(0, Math.sin((i * 30) / 120)) // Varying dirt over 2 hours
       const noise = (Math.random() - 0.5) * 0.05
       
       const idealKw = 5 * sunAngle // 5kW rated
@@ -193,7 +195,7 @@ export default function Dashboard() {
           const localPred = currentWx ? predictFromWeather(currentWx, ratedKw) : undefined
           const predicted = localPred != null ? localPred : d.predictedKw
           const next = [...prev, { t: d.timestamp, actual: d.actualKw, predicted }]
-          return next.slice(-145) // keep last 24 hours at 10min cadence (145 points = 24h + 24:00)
+          return next.slice(-25) // keep last 12 hours at 30min cadence (25 points = 12h + 12:00)
         })
       }
     }
@@ -234,9 +236,11 @@ export default function Dashboard() {
   }, [])
 
   const chartData = useMemo(() => {
-    const baseData = stream.map(p => ({ time: formatTime(p.t), Actual: p.actual, Predicted: p.predicted }))
+    // Filter to show only last 12 hours of data
+    const last12Hours = stream.slice(-25) // 25 points = 12 hours at 30min intervals
+    const baseData = last12Hours.map(p => ({ time: formatTime(p.t), Actual: p.actual, Predicted: p.predicted }))
     
-    // If we have ML predictions, add them to the chart
+    // If we have ML predictions, add them to the chart (limited to 12 hours)
     if (mlPrediction?.hourlyPredictions) {
       return baseData.map((point, index) => ({
         ...point,
@@ -410,26 +414,34 @@ export default function Dashboard() {
             <Card title="Real vs Predicted Energy (kW)">
               <div className="h-80">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis 
-                      dataKey="time" 
-                      minTickGap={20}
-                      tickFormatter={(value) => value}
-                      domain={['00:00', '24:00']}
-                    />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Line type="monotone" dataKey="Actual" stroke="#0ea5e9" strokeWidth={2} dot={false} />
-                    <Line type="monotone" dataKey="Predicted" stroke="#22c55e" strokeWidth={2} dot={false} />
-                    {mlPrediction && (
-                      <Line type="monotone" dataKey="ML Predicted" stroke="#8b5cf6" strokeWidth={2} dot={false} />
-                    )}
-                  </LineChart>
+                  <BarChart 
+                    data={chartData}
+                    barCategoryGap="20%"  // space between groups
+                    barGap={2}            // space between bars inside group
+                  >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis 
+                  dataKey="time" 
+                  minTickGap={120}
+                  tickFormatter={(value) => value}
+                  domain={['00:00', '12:00']}
+                  interval={3}
+                />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+        
+                {/* Side-by-side grouped bars */}
+                <Bar dataKey="Actual" fill="#2563eb" name="Actual" radius={[2, 2, 0, 0]} barSize={6} />
+                <Bar dataKey="Predicted" fill="#f59e0b" name="Predicted" radius={[2, 2, 0, 0]} barSize={6} />
+                {mlPrediction && (
+                  <Bar dataKey="ML Predicted" fill="#8b5cf6" name="ML Predicted" radius={[2, 2, 0, 0]} barSize={6}/>
+                )}
+                </BarChart>
                 </ResponsiveContainer>
               </div>
             </Card>
+
           </div>
 
           <div className="space-y-6">
