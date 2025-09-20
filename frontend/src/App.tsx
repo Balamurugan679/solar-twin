@@ -27,7 +27,23 @@ type TelemetryMsg = {
 
 function formatTime(ts: number) {
   const d = new Date(ts)
-  return d.toLocaleTimeString()
+  const hours = d.getHours()
+  const minutes = d.getMinutes()
+  
+  // Handle 24:00 case (when it's exactly midnight of the next day)
+  if (hours === 0 && minutes === 0) {
+    // Check if this is the last data point (24:00)
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+    const timeDiff = ts - today.getTime()
+    const totalMinutes = timeDiff / (1000 * 60)
+    
+    if (totalMinutes >= 1440) { // 24 hours = 1440 minutes
+      return '24:00'
+    }
+  }
+  
+  return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`
 }
 
 // Mirror backend twin: PV output = rated * irradianceFactor * tempDerate * cloudFactor * humidityDrag
@@ -45,15 +61,16 @@ function predictFromWeather(weather: Weather, ratedKw: number): number {
 
 export default function App() {
   const [stream, setStream] = useState<Array<{ t: number; actual: number; predicted: number }>>(() => {
-    // Generate initial historical data points for the last 24 hours at 10-minute intervals
-    const now = Date.now()
+    // Generate initial historical data points for a full 24-hour day at 10-minute intervals
+    const now = new Date()
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()) // Start of today
     const initialData = []
-    for (let i = 143; i >= 0; i--) { // 144 points = 24 hours at 10min intervals
-      const timestamp = now - (i * 10 * 60 * 1000) // 10 minutes ago
-      const minutes = (i * 10) / 60 // hours since start of day
-      const localHour = (minutes / 10) % 24
-      const sunAngle = Math.max(0, Math.sin(((localHour - 6) / 12) * Math.PI))
-      const dirtLoss = 0.05 + 0.15 * Math.max(0, Math.sin(minutes / 2))
+    
+    for (let i = 0; i <= 144; i++) { // 145 points = 24 hours at 10min intervals + 24:00
+      const timestamp = today.getTime() + (i * 10 * 60 * 1000) // 10-minute intervals from midnight
+      const hourOfDay = (i * 10) / 60 // Current hour (0-24)
+      const sunAngle = Math.max(0, Math.sin(((hourOfDay - 6) / 12) * Math.PI)) // Sun angle from 6 AM to 6 PM
+      const dirtLoss = 0.05 + 0.15 * Math.max(0, Math.sin((i * 10) / 120)) // Varying dirt over 2 hours
       const noise = (Math.random() - 0.5) * 0.05
       
       const idealKw = 5 * sunAngle // 5kW rated
@@ -96,7 +113,7 @@ export default function App() {
           const localPred = currentWx ? predictFromWeather(currentWx, ratedKw) : undefined
           const predicted = localPred != null ? localPred : d.predictedKw
           const next = [...prev, { t: d.timestamp, actual: d.actualKw, predicted }]
-          return next.slice(-144) // keep last 24 hours at 10min cadence (144 points = 24h)
+          return next.slice(-145) // keep last 24 hours at 10min cadence (145 points = 24h + 24:00)
         })
       }
     }
@@ -208,7 +225,12 @@ export default function App() {
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" minTickGap={20} />
+                  <XAxis 
+                    dataKey="time" 
+                    minTickGap={20}
+                    tickFormatter={(value) => value}
+                    domain={['00:00', '24:00']}
+                  />
                   <YAxis />
                   <Tooltip />
                   <Legend />
@@ -248,7 +270,12 @@ export default function App() {
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" minTickGap={20} />
+                  <XAxis 
+                    dataKey="time" 
+                    minTickGap={20}
+                    tickFormatter={(value) => value}
+                    domain={['00:00', '24:00']}
+                  />
                   <YAxis />
                   <Tooltip />
                   <Area type="monotone" dataKey="Predicted" stroke="#22c55e" strokeWidth={2} fill="url(#predFill)" />
@@ -282,7 +309,12 @@ export default function App() {
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={predictedChartData}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="time" minTickGap={20} />
+                  <XAxis 
+                    dataKey="time" 
+                    minTickGap={20}
+                    tickFormatter={(value) => value}
+                    domain={['00:00', '24:00']}
+                  />
                   <YAxis />
                   <Tooltip />
                   <Area type="monotone" dataKey="Predicted" stroke="#22c55e" strokeWidth={2} fill="#22c55e22" />
