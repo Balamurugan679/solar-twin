@@ -2,30 +2,64 @@ import { useState } from 'react'
 
 interface LoginPageProps {
   onLogin: (username: string, password: string) => void
+  onSignup?: (userData: { name: string; phone: string; email: string; password: string }) => void
   error?: string
   loading?: boolean
 }
 
-export default function LoginPage({ onLogin, error, loading }: LoginPageProps) {
+export default function LoginPage({ onLogin, onSignup, error, loading }: LoginPageProps) {
+  const [isSignup, setIsSignup] = useState(false)
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [email, setEmail] = useState('')
   const [formError, setFormError] = useState('')
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
     setFormError('')
 
-    if (!username.trim()) {
-      setFormError('Username is required')
-      return
-    }
+    if (isSignup) {
+      // Handle signup
+      if (!name.trim()) {
+        setFormError('Name is required')
+        return
+      }
+      if (!phone.trim()) {
+        setFormError('Phone number is required')
+        return
+      }
+      if (!email.trim()) {
+        setFormError('Email is required')
+        return
+      }
+      if (!password.trim()) {
+        setFormError('Password is required')
+        return
+      }
+      if (password.length < 6) {
+        setFormError('Password must be at least 6 characters')
+        return
+      }
+      
+      if (onSignup) {
+        onSignup({ name, phone, email, password })
+      }
+    } else {
+      // Handle login
+      if (!username.trim()) {
+        setFormError('Username is required')
+        return
+      }
 
-    if (!password.trim()) {
-      setFormError('Password is required')
-      return
-    }
+      if (!password.trim()) {
+        setFormError('Password is required')
+        return
+      }
 
-    onLogin(username, password)
+      onLogin(username, password)
+    }
   }
 
   return (
@@ -38,43 +72,118 @@ export default function LoginPage({ onLogin, error, loading }: LoginPageProps) {
             </svg>
           </div>
           <h2 className="mt-6 text-3xl font-bold text-gray-900">Solar Twin</h2>
-          <p className="mt-2 text-sm text-gray-600">Sign in to access your solar monitoring dashboard</p>
+          <p className="mt-2 text-sm text-gray-600">
+            {isSignup ? 'Create an account to access solar monitoring' : 'Sign in to access your solar monitoring dashboard'}
+          </p>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="rounded-md shadow-sm space-y-4">
-            <div>
-              <label htmlFor="username" className="block text-sm font-medium text-gray-700">
-                Username
-              </label>
-              <input
-                id="username"
-                name="username"
-                type="text"
-                autoComplete="username"
-                required
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Enter your username"
-              />
-            </div>
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Password
-              </label>
-              <input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
-                placeholder="Enter your password"
-              />
-            </div>
+            {isSignup ? (
+              // Signup form fields
+              <>
+                <div>
+                  <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                    Full Name
+                  </label>
+                  <input
+                    id="name"
+                    name="name"
+                    type="text"
+                    autoComplete="name"
+                    required
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                    placeholder="Enter your full name"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                    Phone Number
+                  </label>
+                  <input
+                    id="phone"
+                    name="phone"
+                    type="tel"
+                    autoComplete="tel"
+                    required
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                    placeholder="Enter your phone number"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+                    Email Address
+                  </label>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                    placeholder="Enter your email address"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete="new-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                    placeholder="Create a password (min 6 characters)"
+                  />
+                </div>
+              </>
+            ) : (
+              // Login form fields
+              <>
+                <div>
+                  <label htmlFor="username" className="block text-sm font-medium text-gray-700">
+                    Username
+                  </label>
+                  <input
+                    id="username"
+                    name="username"
+                    type="text"
+                    autoComplete="username"
+                    required
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                    placeholder="Enter your username"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                    Password
+                  </label>
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="mt-1 appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm"
+                    placeholder="Enter your password"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           {(error || formError) && (
@@ -97,19 +206,33 @@ export default function LoginPage({ onLogin, error, loading }: LoginPageProps) {
                     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                     <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                   </svg>
-                  Signing in...
+                  {isSignup ? 'Creating account...' : 'Signing in...'}
                 </div>
               ) : (
-                'Sign in'
+                isSignup ? 'Sign up' : 'Sign in'
               )}
             </button>
           </div>
 
-          {/* <div className="text-center">
-            <div className="text-sm text-gray-600">
-              Demo credentials: <span className="font-mono bg-gray-100 px-2 py-1 rounded">admin / solar123</span>
-            </div>
-          </div> */}
+          {/* Toggle between login and signup */}
+          <div className="text-center">
+            <button
+              type="button"
+              onClick={() => {
+                setIsSignup(!isSignup)
+                setFormError('')
+                // Clear form fields when switching
+                setUsername('')
+                setPassword('')
+                setName('')
+                setPhone('')
+                setEmail('')
+              }}
+              className="text-sm text-indigo-600 hover:text-indigo-500"
+            >
+              {isSignup ? 'Already have an account? Sign in' : "Don't have an account? Sign up"}
+            </button>
+          </div>
         </form>
       </div>
     </div>
