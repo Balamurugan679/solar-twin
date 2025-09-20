@@ -113,13 +113,13 @@ export default function App() {
     fetch('/api/config').then(r => r.json()).then(cfg => setThreshold(cfg.threshold))
   }, [])
 
-  // News fetching functions
+  // News fetching functions - now using secure backend proxy
   const fetchNews = async (topic: string): Promise<NewsArticle[]> => {
     try {
-      const apiKey = '13851dc74c8944a58e0b7209d4154320'
-      const encodedTopic = encodeURIComponent(topic)
-      const url = `https://newsdata.io/api/1/latest?apikey=${apiKey}&q=${encodedTopic}`
-      const response = await fetch(url)
+      const response = await fetch(`/api/news?topic=${encodeURIComponent(topic)}`)
+      if (!response.ok) {
+        throw new Error(`Backend error: ${response.status}`)
+      }
       const data = await response.json()
       return data.results || []
     } catch (error) {
@@ -251,16 +251,19 @@ export default function App() {
               {enhancedWeather.loading ? (
                 <div className="text-sm text-gray-500">Loading weather data…</div>
               ) : enhancedWeather.error ? (
-                <div className="text-sm text-red-600">Error: {enhancedWeather.error}</div>
+                <div className="text-sm text-red-600">
+                  <div>Error: {enhancedWeather.error}</div>
+                  <div className="text-xs text-gray-500 mt-1">Using fallback data</div>
+                </div>
               ) : (
                 <div className="space-y-3">
                   {/* Basic Weather */}
                   <div>
                     <div className="text-gray-500 mb-2">Current Weather</div>
                     <div className="grid grid-cols-2 gap-2">
-                      <div><span className="text-gray-500">Temp</span><div className="font-medium">{enhancedWeather.temperature.toFixed(1)}°C</div></div>
-                      <div><span className="text-gray-500">Humidity</span><div className="font-medium">{enhancedWeather.humidity.toFixed(0)}%</div></div>
-                      <div><span className="text-gray-500">Clouds</span><div className="font-medium">{enhancedWeather.cloudCover.toFixed(0)}%</div></div>
+                      <div><span className="text-gray-500">Temp</span><div className="font-medium">{enhancedWeather.temperature ? enhancedWeather.temperature.toFixed(1) : 'N/A'}°C</div></div>
+                      <div><span className="text-gray-500">Humidity</span><div className="font-medium">{enhancedWeather.humidity ? enhancedWeather.humidity.toFixed(0) : 'N/A'}%</div></div>
+                      <div><span className="text-gray-500">Clouds</span><div className="font-medium">{enhancedWeather.cloudCover ? enhancedWeather.cloudCover.toFixed(0) : 'N/A'}%</div></div>
                       <div><span className="text-gray-500">Sunlight</span><div className="font-medium">{currentWx ? (currentWx.sunlightRatio * 100).toFixed(0) : 'N/A'}%</div></div>
                     </div>
                   </div>
@@ -271,15 +274,15 @@ export default function App() {
                     <div className="grid grid-cols-1 gap-2">
                       <div className="flex justify-between">
                         <span className="text-gray-500">Direct</span>
-                        <span className="font-medium">{enhancedWeather.directRadiation.toFixed(0)}</span>
+                        <span className="font-medium">{enhancedWeather.directRadiation ? enhancedWeather.directRadiation.toFixed(0) : 'N/A'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className="text-gray-500">Diffuse</span>
-                        <span className="font-medium">{enhancedWeather.diffuseRadiation.toFixed(0)}</span>
+                        <span className="font-medium">{enhancedWeather.diffuseRadiation ? enhancedWeather.diffuseRadiation.toFixed(0) : 'N/A'}</span>
                       </div>
                       <div className="flex justify-between border-t pt-1">
                         <span className="text-gray-500 font-medium">Global Tilted</span>
-                        <span className="font-bold text-indigo-600">{enhancedWeather.globalTiltedIrradiance.toFixed(0)}</span>
+                        <span className="font-bold text-indigo-600">{enhancedWeather.globalTiltedIrradiance ? enhancedWeather.globalTiltedIrradiance.toFixed(0) : 'N/A'}</span>
                       </div>
                     </div>
                   </div>
@@ -370,15 +373,28 @@ export default function App() {
               </ResponsiveContainer>
             </div>
           </Card>
-          <Card title="Local Weather News / Alerts">
-            {owmAlerts.length === 0 ? (
-              <div className="text-sm text-gray-500">No recent alerts</div>
+          <Card title="Solar & Weather News">
+            {(weatherNews.length === 0 && gemologyNews.length === 0) ? (
+              <div className="text-sm text-gray-500">Loading news...</div>
             ) : (
-              <ul className="text-sm list-disc pl-5 space-y-1">
-                {owmAlerts.map((a, i) => (
-                  <li key={i}><span className="font-medium">{a.event || 'Alert'}</span>{a.sender_name ? ` — ${a.sender_name}` : ''}</li>
+              <div className="space-y-3">
+                {[...weatherNews, ...gemologyNews].slice(0, 5).map((article, i) => (
+                  <div key={i} className="border-l-2 border-indigo-200 pl-3">
+                    <a 
+                      href={article.link} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="text-sm font-medium text-indigo-600 hover:text-indigo-800 hover:underline"
+                    >
+                      {article.title}
+                    </a>
+                    <p className="text-xs text-gray-600 mt-1">{article.description}</p>
+                    <div className="text-xs text-gray-400 mt-1">
+                      {article.source_id} • {new Date(article.pubDate).toLocaleDateString()}
+                    </div>
+                  </div>
                 ))}
-              </ul>
+              </div>
             )}
           </Card>
         </div>
