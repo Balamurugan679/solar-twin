@@ -106,6 +106,8 @@ export default function Dashboard() {
   const [powerOn, setPowerOn] = useState<boolean>(true)
   const [weatherNews, setWeatherNews] = useState<NewsArticle[]>([])
   const [gemologyNews, setGemologyNews] = useState<NewsArticle[]>([])
+  const [currentNewsIndex, setCurrentNewsIndex] = useState<number>(0)
+  const [allNews, setAllNews] = useState<NewsArticle[]>([])
   const [mlPrediction, setMlPrediction] = useState<{
     energy12h: number
     hourlyPredictions: Array<{ time: string; predicted: number }>
@@ -167,9 +169,24 @@ export default function Dashboard() {
       ])
       setWeatherNews(weather)
       setGemologyNews(gemology)
+      
+      // Combine all news for auto-scrolling (4 articles total)
+      const combinedNews = [...weather, ...gemology].slice(0, 5)
+      setAllNews(combinedNews)
     }
     loadNews()
   }, [])
+
+  // Auto-scroll news every 5 seconds
+  useEffect(() => {
+    if (allNews.length === 0) return
+    
+    const interval = setInterval(() => {
+      setCurrentNewsIndex((prev) => (prev + 1) % allNews.length)
+    }, 10000) // 5 seconds
+    
+    return () => clearInterval(interval)
+  }, [allNews.length])
 
   // Fetch ML predictions when location is available
   useEffect(() => {
@@ -514,15 +531,72 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               </div>
             </Card>
-            <Card title="Local Weather News / Alerts">
-              {owmAlerts.length === 0 ? (
-                <div className="text-sm text-gray-500">No recent alerts</div>
+            <Card title="Latest News">
+              {allNews.length === 0 ? (
+                <div className="text-sm text-gray-500">Loading news...</div>
               ) : (
-                <ul className="text-sm list-disc pl-5 space-y-1">
-                  {owmAlerts.map((a, i) => (
-                    <li key={i}><span className="font-medium">{a.event || 'Alert'}</span>{a.sender_name ? ` — ${a.sender_name}` : ''}</li>
-                  ))}
-                </ul>
+                <div className="space-y-3">
+                  {/* Current news article */}
+                  <div className="border-l-4 border-blue-500 pl-3">
+                    <h4 className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">
+                      <a 
+                        href={allNews[currentNewsIndex]?.link} 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="hover:text-blue-600 dark:hover:text-blue-400"
+                      >
+                        {allNews[currentNewsIndex]?.title}
+                      </a>
+                    </h4>
+                    <p className="text-xs text-gray-600 dark:text-gray-400 mb-2">
+                      {allNews[currentNewsIndex]?.description}
+                    </p>
+                    <div className="flex justify-between items-center text-xs text-gray-500">
+                      <span>{allNews[currentNewsIndex]?.source_id}</span>
+                      <span>{new Date(allNews[currentNewsIndex]?.pubDate).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  
+                  {/* News indicator dots */}
+                  <div className="flex justify-center space-x-2 mt-3">
+                    {allNews.map((_, index) => (
+                      <button
+                        key={index}
+                        onClick={() => setCurrentNewsIndex(index)}
+                        className={`w-2 h-2 rounded-full transition-colors ${
+                          index === currentNewsIndex 
+                            ? 'bg-blue-500' 
+                            : 'bg-gray-300 dark:bg-gray-600 hover:bg-gray-400'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  
+                  {/* Auto-scroll progress bar */}
+                  <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1 mt-2">
+                    <div 
+                      className="bg-blue-500 h-1 rounded-full transition-all duration-100 ease-linear"
+                      style={{
+                        animation: 'progress 10s linear infinite'
+                      }}
+                    />
+                  </div>
+                </div>
+              )}
+              
+              {/* Weather alerts if any */}
+              {owmAlerts.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-gray-200 dark:border-gray-700">
+                  <div className="text-sm font-medium mb-2">Weather Alerts</div>
+                  <ul className="text-sm list-disc pl-5 space-y-1">
+                    {owmAlerts.slice(0, 3).map((a, i) => (
+                      <li key={i}>
+                        <span className="font-medium">{a.event || 'Alert'}</span>
+                        {a.sender_name ? ` — ${a.sender_name}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </Card>
           </div>

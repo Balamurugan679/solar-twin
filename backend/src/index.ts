@@ -283,34 +283,38 @@ app.get('/api/news', async (req, res) => {
     const topic = req.query.topic as string;
     if (!topic) return res.status(400).json({ error: 'topic parameter is required' });
     
-    const apiKey = process.env.NEWSDATA_API_KEY;
+    const apiKey = process.env.NEWSAPI_KEY;
     
-    // If no API key or it's invalid, return mock data for demo purposes
-    if (!apiKey || apiKey === '13851dc74c8944a58e0b7209d4154320') {
+    // If no API key, return mock data for demo purposes
+    if (!apiKey) {
       console.log('Using mock news data for topic:', topic);
-      const mockNews = generateMockNews(topic);
+      const mockNews = generateMockNews(topic).slice(0, 4);
       return res.json({ results: mockNews });
     }
     
+    // Use NewsData.io API (pub_ key format)
     const encodedTopic = encodeURIComponent(topic);
-    const url = `https://newsdata.io/api/1/latest?apikey=${apiKey}&q=${encodedTopic}`;
+    const url = `https://newsdata.io/api/1/latest?apikey=${apiKey}&q=${encodedTopic}&language=en&size=4`;
     
     console.log('Fetching news for topic:', topic);
     const response = await fetch(url);
     const data = await response.json();
     
-    if (!response.ok) {
-      console.error('NewsData API error:', data);
-      // Fallback to mock data if API fails
-      const mockNews = generateMockNews(topic);
-      return res.json({ results: mockNews });
+    if (response.ok && data.results) {
+      // NewsData.io success - return up to 4 articles
+      const limitedResults = data.results.slice(0, 4);
+      return res.json({ results: limitedResults });
     }
     
-    res.json({ results: data.results || [] });
+    console.error('NewsData.io API error:', data);
+    // Fallback to mock data if API fails
+    const mockNews = generateMockNews(topic).slice(0, 4);
+    return res.json({ results: mockNews });
+    
   } catch (err) {
     console.error('News fetch error:', err);
     // Fallback to mock data on error
-    const mockNews = generateMockNews(req.query.topic as string);
+    const mockNews = generateMockNews(req.query.topic as string).slice(0, 4);
     res.json({ results: mockNews });
   }
 });
@@ -342,6 +346,13 @@ function generateMockNews(topic: string) {
         description: "New weather modeling techniques provide more accurate solar irradiance forecasts.",
         source_id: "meteorology-today",
         pubDate: new Date(Date.now() - 7200000).toISOString()
+      },
+      {
+        title: "Climate Data Reveals Peak Solar Generation Hours",
+        link: "https://example.com/climate-solar",
+        description: "Scientists analyze weather patterns to optimize solar panel positioning and energy storage.",
+        source_id: "climate-research",
+        pubDate: new Date(Date.now() - 10800000).toISOString()
       }
     ];
   } else if (isGemology) {
@@ -366,6 +377,13 @@ function generateMockNews(topic: string) {
         description: "Scientists study gemstone crystal formations to develop more efficient photovoltaic materials.",
         source_id: "science-daily",
         pubDate: new Date(Date.now() - 5400000).toISOString()
+      },
+      {
+        title: "Synthetic Diamonds Used in Advanced Solar Panel Manufacturing",
+        link: "https://example.com/synthetic-diamond-solar",
+        description: "Breakthrough technology uses lab-grown diamonds to create ultra-efficient solar cells.",
+        source_id: "tech-innovation",
+        pubDate: new Date(Date.now() - 9000000).toISOString()
       }
     ];
   }
@@ -377,6 +395,27 @@ function generateMockNews(topic: string) {
       description: "Recent breakthroughs in solar panel technology promise increased efficiency and lower costs.",
       source_id: "tech-news",
       pubDate: new Date().toISOString()
+    },
+    {
+      title: "Global Solar Energy Market Reaches New Heights",
+      link: "https://example.com/solar-market",
+      description: "International investments in solar energy infrastructure hit record levels this quarter.",
+      source_id: "market-watch",
+      pubDate: new Date(Date.now() - 3600000).toISOString()
+    },
+    {
+      title: "Smart Grid Integration Enhances Solar Panel Efficiency",
+      link: "https://example.com/smart-grid-solar",
+      description: "Advanced grid technology optimizes solar energy distribution and storage systems.",
+      source_id: "energy-today",
+      pubDate: new Date(Date.now() - 7200000).toISOString()
+    },
+    {
+      title: "Residential Solar Installations See Record Growth",
+      link: "https://example.com/residential-solar",
+      description: "Homeowners increasingly adopt solar energy solutions as costs continue to decline.",
+      source_id: "home-energy",
+      pubDate: new Date(Date.now() - 10800000).toISOString()
     }
   ];
 }
