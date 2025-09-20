@@ -13,6 +13,14 @@ import {
 } from 'recharts'
 
 type Weather = { temperatureC: number; humidity: number; cloudCover: number; sunlightRatio: number }
+type NewsArticle = {
+  title: string
+  link: string
+  description?: string
+  content?: string
+  source_id: string
+  pubDate: string
+}
 type TelemetryMsg = {
   type: 'telemetry'
   data: {
@@ -57,10 +65,40 @@ export default function App() {
   const [owmAlerts, setOwmAlerts] = useState<Array<any>>([])
   const [showPredModal, setShowPredModal] = useState<boolean>(false)
   const [powerOn, setPowerOn] = useState<boolean>(true)
+  const [weatherNews, setWeatherNews] = useState<NewsArticle[]>([])
+  const [gemologyNews, setGemologyNews] = useState<NewsArticle[]>([])
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
     fetch('/api/config').then(r => r.json()).then(cfg => setThreshold(cfg.threshold))
+  }, [])
+
+  // News fetching functions
+  const fetchNews = async (topic: string): Promise<NewsArticle[]> => {
+    try {
+      const apiKey = '13851dc74c8944a58e0b7209d4154320'
+      const encodedTopic = encodeURIComponent(topic)
+      const url = `https://newsdata.io/api/1/latest?apikey=${apiKey}&q=${encodedTopic}`
+      const response = await fetch(url)
+      const data = await response.json()
+      return data.results || []
+    } catch (error) {
+      console.error(`Error fetching ${topic} news:`, error)
+      return []
+    }
+  }
+
+  // Fetch news on component mount
+  useEffect(() => {
+    const loadNews = async () => {
+      const [weather, gemology] = await Promise.all([
+        fetchNews('weather forecast OR meteorology'),
+        fetchNews('gemology OR gemstones OR diamonds')
+      ])
+      setWeatherNews(weather)
+      setGemologyNews(gemology)
+    }
+    loadNews()
   }, [])
 
   useEffect(() => {
