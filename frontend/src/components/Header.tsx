@@ -23,14 +23,50 @@ export default function Header() {
 
   const userRank = calculateUserRank(userStats.totalPowerGenerated)
 
-  // Dummy rank badges
+  // Badge system with actual badge images
   const rankBadges = [
-    { name: 'First Week', icon: '🎯', earned: true, date: '2024-01-15' },
-    { name: 'Eco Warrior', icon: '🌍', earned: true, date: '2024-02-01' },
-    { name: 'Power Saver', icon: '💡', earned: true, date: '2024-02-20' },
-    { name: 'Carbon Crusher', icon: '🌿', earned: false, date: null },
-    { name: 'Solar Champion', icon: '👑', earned: false, date: null },
-    { name: 'Green Legend', icon: '🌟', earned: false, date: null }
+    { 
+      name: 'Alert Ninja', 
+      image: '/badges/alert ninja.jpeg', 
+      earned: true, 
+      date: '2024-01-15',
+      description: 'Master of system alerts and monitoring'
+    },
+    { 
+      name: 'Carbon Cutter', 
+      image: '/badges/carbon cutter.jpeg', 
+      earned: true, 
+      date: '2024-02-01',
+      description: 'Reduced carbon emissions significantly'
+    },
+    { 
+      name: 'Forecast Pro', 
+      image: '/badges/forecast pro.jpeg', 
+      earned: true, 
+      date: '2024-02-20',
+      description: 'Expert at energy forecasting and prediction'
+    },
+    { 
+      name: 'Sunny Streak', 
+      image: '/badges/sunny streek.jpeg', 
+      earned: userStats.daysActive >= 100, 
+      date: userStats.daysActive >= 100 ? '2024-05-15' : null,
+      description: 'Maintained consistent solar generation streak'
+    },
+    { 
+      name: 'Solar Champion', 
+      image: null, 
+      earned: false, 
+      date: null,
+      description: 'Generate over 2000 kWh of solar energy'
+    },
+    { 
+      name: 'Green Legend', 
+      image: null, 
+      earned: false, 
+      date: null,
+      description: 'Save over 5000 kg of CO₂ emissions'
+    }
   ]
 
   return (
@@ -123,17 +159,85 @@ export default function Header() {
                 </div>
               </div>
 
-              {/* Rank Badges */}
+              {/* Achievement Badges */}
               <h3 className="text-lg font-semibold text-gray-900 mb-4">Achievements</h3>
               <div className="grid grid-cols-3 gap-3 mb-6">
-                {Array.from({ length: 6 }, (_, index) => (
+                {rankBadges.map((badge, index) => (
                   <div
                     key={index}
-                    className="p-4 rounded-lg bg-gray-50 border-2 border-gray-200 h-16 flex items-center justify-center"
+                    className={`group relative p-2 rounded-lg border-2 h-20 flex flex-col items-center justify-center transition-all duration-200 cursor-pointer ${
+                      badge.earned
+                        ? 'bg-gradient-to-br from-yellow-50 to-amber-50 border-yellow-300 shadow-md hover:shadow-lg transform hover:scale-105'
+                        : 'bg-gray-50 border-gray-200 opacity-50'
+                    }`}
+                    title={badge.description + (badge.earned && badge.date ? ` (Earned: ${badge.date})` : '')}
                   >
-                    {/* Empty dummy card */}
+                    {badge.earned && badge.image ? (
+                      <>
+                        <img
+                          src={badge.image}
+                          alt={badge.name}
+                          className="w-10 h-10 rounded-full object-cover mb-1 group-hover:scale-110 transition-transform duration-200"
+                        />
+                        <span className="text-xs font-medium text-gray-700 text-center leading-tight">
+                          {badge.name}
+                        </span>
+                        {/* Earned indicator */}
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center shadow-sm">
+                          <span className="text-white text-xs font-bold">✓</span>
+                        </div>
+                        {/* Earned date tooltip */}
+                        {badge.date && (
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                            Earned: {badge.date}
+                          </div>
+                        )}
+                      </>
+                    ) : badge.earned && !badge.image ? (
+                      <>
+                        <div className="w-10 h-10 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center mb-1 group-hover:scale-110 transition-transform duration-200">
+                          <span className="text-white text-lg font-bold">★</span>
+                        </div>
+                        <span className="text-xs font-medium text-gray-700 text-center leading-tight">
+                          {badge.name}
+                        </span>
+                        <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center shadow-sm">
+                          <span className="text-white text-xs font-bold">✓</span>
+                        </div>
+                        {badge.date && (
+                          <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap z-10">
+                            Earned: {badge.date}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-10 h-10 bg-gray-300 rounded-full flex items-center justify-center mb-1">
+                          <span className="text-gray-500 text-lg">🔒</span>
+                        </div>
+                        <span className="text-xs text-gray-500 text-center leading-tight">
+                          {badge.name}
+                        </span>
+                      </>
+                    )}
                   </div>
                 ))}
+              </div>
+              
+              {/* Achievement Stats */}
+              <div className="mb-6">
+                <div className="flex justify-between items-center mb-2">
+                  <span className="text-sm text-gray-600">Badges Earned</span>
+                  <span className="text-sm font-medium text-gray-900">
+                    {rankBadges.filter(badge => badge.earned).length} / {rankBadges.length}
+                  </span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-gradient-to-r from-yellow-400 to-orange-500 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(rankBadges.filter(badge => badge.earned).length / rankBadges.length) * 100}%` }}
+                  ></div>
+                </div>
               </div>
 
               {/* Account Info */}
