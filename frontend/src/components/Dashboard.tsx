@@ -467,10 +467,6 @@ export default function Dashboard() {
                 <span className="font-medium text-green-600">{dummySensorData.power.toFixed(3)} W</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-gray-500">Irradiance</span>
-                <span className="font-medium">{dummySensorData.irradiance.toFixed(0)} W/m²</span>
-              </div>
-              <div className="flex justify-between">
                 <span className="text-gray-500">Panel Temp</span>
                 <span className="font-medium">{dummySensorData.panelTemperature.toFixed(1)} °C</span>
               </div>
