@@ -349,30 +349,6 @@ export default function App() {
             </div>
           </Card>
 
-          <Card title="OpenWeather Prediction (5 min, ±2h)">
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={predictedChartData}>
-                  <defs>
-                    <linearGradient id="predFill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#22c55e" stopOpacity={0.35} />
-                      <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis 
-                    dataKey="time" 
-                    minTickGap={20}
-                    tickFormatter={(value) => value}
-                    domain={['00:00', '24:00']}
-                  />
-                  <YAxis />
-                  <Tooltip />
-                  <Area type="monotone" dataKey="Predicted" stroke="#22c55e" strokeWidth={2} fill="url(#predFill)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
           <Card title="Solar & Weather News">
             {(weatherNews.length === 0 && gemologyNews.length === 0) ? (
               <div className="text-sm text-gray-500">Loading news...</div>
