@@ -11,6 +11,7 @@ import {
   ResponsiveContainer,
   Legend
 } from 'recharts'
+import { useWeatherData, formatTime as formatWeatherTime } from './hooks/useWeatherData'
 
 type Weather = { temperatureC: number; humidity: number; cloudCover: number; sunlightRatio: number }
 type NewsArticle = {
@@ -87,6 +88,9 @@ export default function App() {
   const [weatherNews, setWeatherNews] = useState<NewsArticle[]>([])
   const [gemologyNews, setGemologyNews] = useState<NewsArticle[]>([])
   const wsRef = useRef<WebSocket | null>(null)
+
+  // Use the enhanced weather data hook
+  const enhancedWeather = useWeatherData(geo?.lat || null, geo?.lon || null)
 
   useEffect(() => {
     fetch('/api/config').then(r => r.json()).then(cfg => setThreshold(cfg.threshold))
@@ -214,25 +218,70 @@ export default function App() {
           <div className="text-3xl font-semibold">{(efficiency * 100).toFixed(1)}%</div>
           <div className="text-xs text-gray-500">Actual / Predicted</div>
         </Card>
-        <Card title="Your Location & Current Weather">
+        <Card title="Your Location & Solar Weather Data">
           {geoErr && <div className="text-sm text-red-600">{geoErr}</div>}
           {!geo && !geoErr && <div className="text-sm text-gray-500">Requesting location…</div>}
           {geo && (
-            <div className="text-sm">
-              <div className="text-gray-500">Location</div>
-              <div className="font-medium">{place || 'Locating…'}</div>
-              <div className="mt-1 text-gray-500">Coordinates</div>
-              <div className="font-medium">{geo.lat.toFixed(5)}, {geo.lon.toFixed(5)}</div>
-              <div className="mt-2 text-gray-500">Current Weather (Open-Meteo)</div>
-              {currentWx ? (
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  <div><span className="text-gray-500">Temp</span><div className="font-medium">{currentWx.temperatureC.toFixed(1)}°C</div></div>
-                  <div><span className="text-gray-500">Humidity</span><div className="font-medium">{currentWx.humidity.toFixed(0)}%</div></div>
-                  <div><span className="text-gray-500">Clouds</span><div className="font-medium">{(currentWx.cloudCover * 100).toFixed(0)}%</div></div>
-                  <div><span className="text-gray-500">Sunlight</span><div className="font-medium">{(currentWx.sunlightRatio * 100).toFixed(0)}%</div></div>
-                </div>
+            <div className="text-sm space-y-3">
+              {/* Location Section */}
+              <div>
+                <div className="text-gray-500">Location</div>
+                <div className="font-medium">{enhancedWeather.cityName || place || 'Locating…'}</div>
+                <div className="text-xs text-gray-400">{geo.lat.toFixed(5)}, {geo.lon.toFixed(5)}</div>
+              </div>
+
+              {/* Weather Data */}
+              {enhancedWeather.loading ? (
+                <div className="text-sm text-gray-500">Loading weather data…</div>
+              ) : enhancedWeather.error ? (
+                <div className="text-sm text-red-600">Error: {enhancedWeather.error}</div>
               ) : (
-                <div className="text-sm text-gray-500">Fetching…</div>
+                <div className="space-y-3">
+                  {/* Basic Weather */}
+                  <div>
+                    <div className="text-gray-500 mb-2">Current Weather</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div><span className="text-gray-500">Temp</span><div className="font-medium">{enhancedWeather.temperature.toFixed(1)}°C</div></div>
+                      <div><span className="text-gray-500">Humidity</span><div className="font-medium">{enhancedWeather.humidity.toFixed(0)}%</div></div>
+                      <div><span className="text-gray-500">Clouds</span><div className="font-medium">{enhancedWeather.cloudCover.toFixed(0)}%</div></div>
+                      <div><span className="text-gray-500">Sunlight</span><div className="font-medium">{currentWx ? (currentWx.sunlightRatio * 100).toFixed(0) : 'N/A'}%</div></div>
+                    </div>
+                  </div>
+
+                  {/* Solar Radiation Data */}
+                  <div>
+                    <div className="text-gray-500 mb-2">Solar Radiation (W/m²)</div>
+                    <div className="grid grid-cols-1 gap-2">
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Direct</span>
+                        <span className="font-medium">{enhancedWeather.directRadiation.toFixed(0)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Diffuse</span>
+                        <span className="font-medium">{enhancedWeather.diffuseRadiation.toFixed(0)}</span>
+                      </div>
+                      <div className="flex justify-between border-t pt-1">
+                        <span className="text-gray-500 font-medium">Global Tilted</span>
+                        <span className="font-bold text-indigo-600">{enhancedWeather.globalTiltedIrradiance.toFixed(0)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sunrise/Sunset */}
+                  <div>
+                    <div className="text-gray-500 mb-2">Sun Times</div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-gray-500">Sunrise</span>
+                        <div className="font-medium text-orange-600">{formatWeatherTime(enhancedWeather.sunrise)}</div>
+                      </div>
+                      <div>
+                        <span className="text-gray-500">Sunset</span>
+                        <div className="font-medium text-orange-600">{formatWeatherTime(enhancedWeather.sunset)}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               )}
             </div>
           )}
