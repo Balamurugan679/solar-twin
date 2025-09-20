@@ -505,7 +505,7 @@ export default function Dashboard() {
                         <div><span className="text-gray-500">Temp</span><div className="font-medium">{enhancedWeather.temperature.toFixed(1)}°C</div></div>
                         <div><span className="text-gray-500">Humidity</span><div className="font-medium">{enhancedWeather.humidity.toFixed(0)}%</div></div>
                         <div><span className="text-gray-500">Clouds</span><div className="font-medium">{enhancedWeather.cloudCover.toFixed(0)}%</div></div>
-                        <div><span className="text-gray-500">Sunlight</span><div className="font-medium">{currentWx ? (currentWx.sunlightRatio * 100).toFixed(0) : 'N/A'}%</div></div>
+                        <div><span className="text-gray-500">Sunlight</span><div className="font-medium">{enhancedWeather.sunlightRatio ? (enhancedWeather.sunlightRatio * 100).toFixed(0) : 'N/A'}%</div></div>
                       </div>
                     </div>
 

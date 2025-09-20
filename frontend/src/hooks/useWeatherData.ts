@@ -9,6 +9,7 @@ export interface WeatherData {
   globalTiltedIrradiance: number
   sunrise: string
   sunset: string
+  sunlightRatio: number  // Add sunlight ratio
   cityName?: string
   loading: boolean
   error: string | null
@@ -24,6 +25,7 @@ export function useWeatherData(lat: number | null, lon: number | null) {
     globalTiltedIrradiance: 0,
     sunrise: '',
     sunset: '',
+    sunlightRatio: 0,
     loading: true,
     error: null
   })
@@ -83,11 +85,24 @@ export function useWeatherData(lat: number | null, lon: number | null) {
           }
         } catch (sunError) {
           console.warn('Dedicated sunrise API failed, using OpenWeatherMap data:', sunError)
-          
-          // Fallback to OpenWeatherMap sunrise/sunset data
+        }
+        
+        // Fallback to OpenWeatherMap sunrise/sunset data if dedicated API fails
+        if (!sunrise || !sunset) {
           if (sys.sunrise && sys.sunset) {
             const sunriseDate = new Date(sys.sunrise * 1000)
             const sunsetDate = new Date(sys.sunset * 1000)
+            sunrise = sunriseDate.toISOString()
+            sunset = sunsetDate.toISOString()
+          } else {
+            // Ultimate fallback: calculated sunrise/sunset for Chennai, India
+            const today = new Date()
+            const sunriseHour = 6 + (Math.sin((today.getMonth() - 3) * Math.PI / 6) * 0.5) // 5:30-6:30 AM range
+            const sunsetHour = 18 + (Math.sin((today.getMonth() - 3) * Math.PI / 6) * 0.5) // 5:30-6:30 PM range
+            
+            const sunriseDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), Math.floor(sunriseHour), (sunriseHour % 1) * 60)
+            const sunsetDate = new Date(today.getFullYear(), today.getMonth(), today.getDate(), Math.floor(sunsetHour), (sunsetHour % 1) * 60)
+            
             sunrise = sunriseDate.toISOString()
             sunset = sunsetDate.toISOString()
           }
@@ -101,6 +116,21 @@ export function useWeatherData(lat: number | null, lon: number | null) {
         const estimatedDiffuseRadiation = maxRadiation * 0.1 * (1 + cloudCoverPercent / 100)
         const estimatedTiltedIrradiance = estimatedDirectRadiation * 0.9 + estimatedDiffuseRadiation
 
+        // Calculate sunlight ratio based on time of day and weather conditions
+        const now = new Date()
+        const currentHour = now.getHours()
+        let dayFactor = 0
+        
+        // Basic day/night cycle (0 at night, peak at noon)
+        if (currentHour >= 6 && currentHour <= 18) {
+          const hourFromNoon = Math.abs(currentHour - 12)
+          dayFactor = Math.max(0, Math.cos((hourFromNoon / 6) * (Math.PI / 2)))
+        }
+        
+        // Apply weather conditions to reduce sunlight
+        const weatherFactor = cloudFactor * 0.8 + 0.2 // Never go below 20% even in cloudy conditions
+        const sunlightRatio = dayFactor * weatherFactor
+
         setWeatherData({
           temperature: main.temp || 0,
           humidity: main.humidity || 0,
@@ -110,6 +140,7 @@ export function useWeatherData(lat: number | null, lon: number | null) {
           globalTiltedIrradiance: estimatedTiltedIrradiance,
           sunrise: sunrise,
           sunset: sunset,
+          sunlightRatio: sunlightRatio,
           cityName,
           loading: false,
           error: null
