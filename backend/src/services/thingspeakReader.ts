@@ -101,20 +101,22 @@ export class ThingSpeakReader {
   private parseFeed(feed: ThingSpeakFeed): ThingSpeakData | null {
     try {
       // Based on the actual data structure from ThingSpeak
-      // field1: virtual sensor (null in current data)
-      // field2: physical sensor (has values like 0.59118)
-      // field3: result (null in current data)
-      // field4: not present in current data
-      // field5: not present in current data
+      // field1: virtual sensor (contains voltage-like values)
+      // field2: physical sensor (contains current-like values)
+      // field3: result (contains power-like values)
+      // field4: irradiance sensor
+      // field5: temperature sensor
       
-      const physicalSensorValue = feed.field2 ? parseFloat(feed.field2) : 0
+      const voltage = feed.field1 ? parseFloat(feed.field1) : 0 // Virtual sensor for voltage
+      const current = feed.field2 ? parseFloat(feed.field2) : 0 // Physical sensor for current
+      const power = feed.field3 ? parseFloat(feed.field3) : (voltage * current) // Calculate power if not provided
       
       return {
-        voltage: feed.field1 ? parseFloat(feed.field1) : 0, // Virtual sensor
-        current: physicalSensorValue, // Physical sensor value
-        power: feed.field3 ? parseFloat(feed.field3) : 0, // Result
+        voltage: voltage,
+        current: current,
+        power: power,
         irradiance: feed.field4 ? parseFloat(feed.field4) : 0,
-        panelTemperature: feed.field5 ? parseFloat(feed.field5) : 0,
+        panelTemperature: feed.field5 ? parseFloat(feed.field5) : 25, // Default to 25°C if not provided
         timestamp: feed.created_at,
         entryId: feed.entry_id
       }

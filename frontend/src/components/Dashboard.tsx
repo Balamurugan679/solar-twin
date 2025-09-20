@@ -213,6 +213,52 @@ export default function Dashboard() {
     return () => clearInterval(interval)
   }, [allNews.length])
 
+  // WebSocket connection for real telemetry data
+  useEffect(() => {
+    const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:'
+    const ws = new WebSocket(`${protocol}//${location.host}/ws`)
+    wsRef.current = ws
+    
+    ws.onopen = () => {
+      console.log('WebSocket connected for telemetry')
+    }
+    
+    ws.onmessage = (ev) => {
+      try {
+        const msg: TelemetryMsg = JSON.parse(ev.data)
+        if (msg.type === 'telemetry') {
+          const d = msg.data
+          setLatest(d)
+          
+          // Add real telemetry data to stream
+          setStream(prev => {
+            const newPoint = { 
+              t: d.timestamp, 
+              actual: d.actualKw, 
+              predicted: d.predictedKw 
+            }
+            const next = [...prev, newPoint]
+            return next.slice(-25) // keep last 25 points (12 hours)
+          })
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error)
+      }
+    }
+    
+    ws.onerror = (error) => {
+      console.error('WebSocket error:', error)
+    }
+    
+    ws.onclose = () => {
+      console.log('WebSocket disconnected')
+    }
+    
+    return () => {
+      ws.close()
+    }
+  }, [])
+
   // Fetch ML predictions when location is available
   useEffect(() => {
     if (geo?.lat && geo?.lon) {
@@ -406,7 +452,9 @@ export default function Dashboard() {
     }
   }
 
+  // Use real sensor data when available, fallback to dummy data
   const dummySensorData = generateDummySensorData()
+  const realSensorData = sensorData || dummySensorData
 
   const ratedKw = 5
   const predictedNow = latest ? (currentWx ? predictFromWeather(currentWx, ratedKw) : latest.predictedKw) : 0
@@ -453,25 +501,39 @@ export default function Dashboard() {
           <div className="text-xs text-gray-500">Actual / Predicted</div>
         </Card>
           <Card title="Real Sensor Data">
+            {sensorLoading ? (
+              <div className="text-sm text-gray-500">Loading sensor data...</div>
+            ) : sensorError ? (
+              <div className="text-sm text-red-600">
+                <div>Error: {sensorError}</div>
+                <div className="text-xs text-gray-500 mt-1">Using simulated data</div>
+              </div>
+            ) : null}
+            
             <div className="space-y-2">
               <div className="flex justify-between">
                 <span className="text-gray-500">Voltage</span>
-                <span className="font-medium">{dummySensorData.voltage.toFixed(1)} V</span>
+                <span className="font-medium">{realSensorData.voltage.toFixed(1)} V</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Current</span>
-                <span className="font-medium">{dummySensorData.current.toFixed(3)} A</span>
+                <span className="font-medium">{realSensorData.current.toFixed(3)} A</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Power</span>
-                <span className="font-medium text-green-600">{dummySensorData.power.toFixed(3)} W</span>
+                <span className="font-medium text-green-600">{realSensorData.power.toFixed(3)} W</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-gray-500">Panel Temp</span>
-                <span className="font-medium">{dummySensorData.panelTemperature.toFixed(1)} °C</span>
+                <span className="font-medium">{realSensorData.panelTemperature.toFixed(1)} °C</span>
               </div>
               <div className="text-xs text-gray-400 mt-2">
-                Last update: {new Date(dummySensorData.timestamp).toLocaleTimeString()}
+                Last update: {new Date(realSensorData.timestamp).toLocaleTimeString()}
+                {sensorData ? (
+                  <span className="text-green-600 ml-2">• ThingSpeak</span>
+                ) : (
+                  <span className="text-yellow-600 ml-2">• Simulated</span>
+                )}
               </div>
             </div>
           </Card>
