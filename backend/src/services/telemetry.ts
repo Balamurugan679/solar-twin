@@ -30,20 +30,28 @@ export function createTelemetrySimulator(): TelemetrySimulator {
 
   // simple diurnal curve over 24h, accelerated clock
   const start = Date.now();
-  const intervalMs = 1000; // 1s updates
-  setInterval(() => {
+  const intervalMs = 10 * 60 * 1000; // 10 minutes updates
+  
+  // Emit initial reading immediately
+  const emitReading = () => {
     const t = Date.now();
-    const seconds = (t - start) / 1000;
-    const localHour = (seconds / 10) % 24; // accelerate: 10s per hour
+    const minutes = (t - start) / (1000 * 60);
+    const localHour = (minutes / 10) % 24; // accelerate: 10 minutes per hour
     const sunAngle = Math.max(0, Math.sin(((localHour - 6) / 12) * Math.PI));
-    const dirtLoss = 0.05 + 0.15 * Math.max(0, Math.sin(seconds / 120)); // varying dirt/smudge
+    const dirtLoss = 0.05 + 0.15 * Math.max(0, Math.sin(minutes / 2)); // varying dirt/smudge over 2 minutes
     const noise = (Math.random() - 0.5) * 0.05;
 
     const idealKw = panel.ratedKw * sunAngle;
     const actualKw = Math.max(0, idealKw * (1 - dirtLoss + noise));
 
     emit({ timestamp: t, energyKw: actualKw, panel });
-  }, intervalMs);
+  };
+  
+  // Emit initial reading
+  emitReading();
+  
+  // Then emit every 10 minutes
+  setInterval(emitReading, intervalMs);
 
   return {
     onReading(cb) {
