@@ -52,7 +52,26 @@ function predictFromWeather(weather: Weather, ratedKw: number): number {
 }
 
 export default function App() {
-  const [stream, setStream] = useState<Array<{ t: number; actual: number; predicted: number }>>([])
+  const [stream, setStream] = useState<Array<{ t: number; actual: number; predicted: number }>>(() => {
+    // Generate initial historical data points for the last 24 hours at 10-minute intervals
+    const now = Date.now()
+    const initialData = []
+    for (let i = 143; i >= 0; i--) { // 144 points = 24 hours at 10min intervals
+      const timestamp = now - (i * 10 * 60 * 1000) // 10 minutes ago
+      const minutes = (i * 10) / 60 // hours since start of day
+      const localHour = (minutes / 10) % 24
+      const sunAngle = Math.max(0, Math.sin(((localHour - 6) / 12) * Math.PI))
+      const dirtLoss = 0.05 + 0.15 * Math.max(0, Math.sin(minutes / 2))
+      const noise = (Math.random() - 0.5) * 0.05
+      
+      const idealKw = 5 * sunAngle // 5kW rated
+      const actualKw = Math.max(0, idealKw * (1 - dirtLoss + noise))
+      const predictedKw = idealKw
+      
+      initialData.push({ t: timestamp, actual: actualKw, predicted: predictedKw })
+    }
+    return initialData
+  })
   const [latest, setLatest] = useState<TelemetryMsg['data'] | null>(null)
   const [threshold, setThreshold] = useState<number>(0.2)
   const [cleaning, setCleaning] = useState<boolean>(false)
@@ -115,7 +134,7 @@ export default function App() {
           const localPred = currentWx ? predictFromWeather(currentWx, ratedKw) : undefined
           const predicted = localPred != null ? localPred : d.predictedKw
           const next = [...prev, { t: d.timestamp, actual: d.actualKw, predicted }]
-          return next.slice(-180) // keep last 3 minutes at 1s cadence
+          return next.slice(-144) // keep last 24 hours at 10min cadence (144 points = 24h)
         })
       }
     }
