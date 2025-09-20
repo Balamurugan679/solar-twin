@@ -11,6 +11,7 @@ import { AlertService } from './services/alerts';
 import { CleaningService } from './services/cleaning';
 import { WeatherProvider, fetchWeatherFromOpenMeteo } from './services/weather';
 import { fetchOpenWeather, resampleToFiveMinutes } from './services/openweather';
+import { MLPredictionService } from './services/mlPrediction';
 
 const PORT = Number(process.env.PORT || 4000);
 const THRESHOLD = Number(process.env.ALERT_THRESHOLD || 0.2); // 20%
@@ -27,6 +28,7 @@ const twin = createDigitalTwin(weatherProvider);
 const alerts = new AlertService(THRESHOLD);
 const cleaning = new CleaningService();
 const telemetry = createTelemetrySimulator();
+const mlPrediction = new MLPredictionService();
 const thingspeakKey = process.env.TS_WRITE_KEY;
 const thingSpeak = thingspeakKey ? new ThingSpeakClient({ apiKey: thingspeakKey }) : null;
 
@@ -108,6 +110,29 @@ app.get('/api/prediction/openweather', async (req, res) => {
     res.json({ series });
   } catch (err) {
     res.status(500).json({ error: 'Failed to build prediction series' });
+  }
+});
+
+// ML Prediction endpoint - uses the provided ML model
+app.get('/api/prediction/ml', async (req, res) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    
+    const prediction = await mlPrediction.getPredictedEnergy(
+      isFinite(lat) ? lat : undefined,
+      isFinite(lon) ? lon : undefined
+    );
+    
+    res.json({
+      energy12h: prediction.energy12h,
+      hourlyPredictions: mlPrediction.getHourlyPredictions(prediction),
+      weatherData: prediction.weatherData,
+      timestamp: Date.now()
+    });
+  } catch (err) {
+    console.error('ML prediction error:', err);
+    res.status(500).json({ error: 'Failed to get ML predictions' });
   }
 });
 

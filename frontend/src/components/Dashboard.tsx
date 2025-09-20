@@ -105,6 +105,12 @@ export default function Dashboard() {
   const [powerOn, setPowerOn] = useState<boolean>(true)
   const [weatherNews, setWeatherNews] = useState<NewsArticle[]>([])
   const [gemologyNews, setGemologyNews] = useState<NewsArticle[]>([])
+  const [mlPrediction, setMlPrediction] = useState<{
+    energy12h: number
+    hourlyPredictions: Array<{ time: string; predicted: number }>
+    weatherData: any
+    timestamp: number
+  } | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
 
   // Use the enhanced weather data hook
@@ -132,6 +138,25 @@ export default function Dashboard() {
     }
   }
 
+  // Fetch ML predictions
+  const fetchMLPrediction = async () => {
+    try {
+      const lat = geo?.lat
+      const lon = geo?.lon
+      const url = lat && lon 
+        ? `/api/prediction/ml?lat=${lat}&lon=${lon}`
+        : '/api/prediction/ml'
+      
+      const response = await fetch(url)
+      if (response.ok) {
+        const data = await response.json()
+        setMlPrediction(data)
+      }
+    } catch (error) {
+      console.error('Error fetching ML prediction:', error)
+    }
+  }
+
   // Fetch news on component mount
   useEffect(() => {
     const loadNews = async () => {
@@ -144,6 +169,16 @@ export default function Dashboard() {
     }
     loadNews()
   }, [])
+
+  // Fetch ML predictions when location is available
+  useEffect(() => {
+    if (geo?.lat && geo?.lon) {
+      fetchMLPrediction()
+      // Refresh ML predictions every 10 minutes
+      const interval = setInterval(fetchMLPrediction, 10 * 60 * 1000)
+      return () => clearInterval(interval)
+    }
+  }, [geo?.lat, geo?.lon])
 
   useEffect(() => {
     const ws = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws')
@@ -199,7 +234,19 @@ export default function Dashboard() {
     )
   }, [])
 
-  const chartData = useMemo(() => stream.map(p => ({ time: formatTime(p.t), Actual: p.actual, Predicted: p.predicted })), [stream])
+  const chartData = useMemo(() => {
+    const baseData = stream.map(p => ({ time: formatTime(p.t), Actual: p.actual, Predicted: p.predicted }))
+    
+    // If we have ML predictions, add them to the chart
+    if (mlPrediction?.hourlyPredictions) {
+      return baseData.map((point, index) => ({
+        ...point,
+        'ML Predicted': mlPrediction.hourlyPredictions[index]?.predicted || 0
+      }))
+    }
+    
+    return baseData
+  }, [stream, mlPrediction])
   const predictedChartData = useMemo(() => predSeries.map(p => ({ time: formatTime(p.t), Predicted: p.predicted })), [predSeries])
 
   async function triggerClean() {
@@ -209,7 +256,8 @@ export default function Dashboard() {
 
   const ratedKw = 5
   const predictedNow = latest ? (currentWx ? predictFromWeather(currentWx, ratedKw) : latest.predictedKw) : 0
-  const efficiency = latest ? (latest.actualKw / Math.max(predictedNow, 0.001)) : 1
+  const mlPredictedKw = mlPrediction ? mlPrediction.energy12h / 12 : predictedNow
+  const efficiency = latest ? (latest.actualKw / Math.max(mlPredictedKw, 0.001)) : 1
   const alertLevel = latest?.alert?.level || 'ok'
 
   return (
@@ -219,16 +267,23 @@ export default function Dashboard() {
           <Card title="Actual Output (kW)">
             <BigNumber value={latest?.actualKw ?? 0} />
           </Card>
-          <Card title={currentWx ? "Predicted Output (kW, your location)" : "Predicted Output (kW)"}>
-            <button onClick={() => setShowPredModal(true)} className="w-full text-left">
-              <BigNumber value={predictedNow} />
-              <div className="mt-1 text-xs text-indigo-600">Tap for details</div>
-            </button>
-          </Card>
-          <Card title="Efficiency">
-            <div className="text-3xl font-semibold">{(efficiency * 100).toFixed(1)}%</div>
-            <div className="text-xs text-gray-500">Actual / Predicted</div>
-          </Card>
+        <Card title="ML Predicted Output (kW)">
+          <button onClick={() => setShowPredModal(true)} className="w-full text-left">
+            <BigNumber value={mlPrediction ? mlPrediction.energy12h / 12 : predictedNow} />
+            <div className="mt-1 text-xs text-indigo-600">
+              {mlPrediction ? `12h avg: ${mlPrediction.energy12h.toFixed(3)} kWh` : 'Tap for details'}
+            </div>
+            {mlPrediction && (
+              <div className="mt-1 text-xs text-gray-400">
+                Updated: {new Date(mlPrediction.timestamp).toLocaleTimeString()}
+              </div>
+            )}
+          </button>
+        </Card>
+        <Card title="Efficiency">
+          <div className="text-3xl font-semibold">{(efficiency * 100).toFixed(1)}%</div>
+          <div className="text-xs text-gray-500">Actual / Predicted</div>
+        </Card>
           <Card title="Real Sensor Data">
             {sensorLoading ? (
               <div className="text-sm text-gray-500">Loading sensor data...</div>
@@ -327,6 +382,23 @@ export default function Dashboard() {
                         </div>
                       </div>
                     </div>
+
+                    {/* ML Prediction Weather Data */}
+                    {mlPrediction?.weatherData && (
+                      <div>
+                        <div className="text-gray-500 mb-2">ML Model Weather</div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-gray-500">Clouds</span>
+                            <div className="font-medium">{mlPrediction.weatherData.clouds?.all || 'N/A'}%</div>
+                          </div>
+                          <div>
+                            <span className="text-gray-500">Temp</span>
+                            <div className="font-medium">{mlPrediction.weatherData.main?.temp?.toFixed(1) || 'N/A'}°C</div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -352,6 +424,9 @@ export default function Dashboard() {
                     <Legend />
                     <Line type="monotone" dataKey="Actual" stroke="#0ea5e9" strokeWidth={2} dot={false} />
                     <Line type="monotone" dataKey="Predicted" stroke="#22c55e" strokeWidth={2} dot={false} />
+                    {mlPrediction && (
+                      <Line type="monotone" dataKey="ML Predicted" stroke="#8b5cf6" strokeWidth={2} dot={false} />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -421,6 +496,38 @@ export default function Dashboard() {
                 </ResponsiveContainer>
               </div>
             </Card>
+
+            <Card title="ML Model Prediction (12h)">
+              <div className="h-80">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={mlPrediction?.hourlyPredictions || []}>
+                    <defs>
+                      <linearGradient id="mlFill" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis 
+                      dataKey="time" 
+                      minTickGap={20}
+                      tickFormatter={(value) => value}
+                    />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Line 
+                      type="monotone" 
+                      dataKey="predicted" 
+                      stroke="#8b5cf6" 
+                      strokeWidth={2} 
+                      dot={false}
+                      name="ML Predicted (kW)"
+                    />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+            </Card>
             <Card title="Local Weather News / Alerts">
               {owmAlerts.length === 0 ? (
                 <div className="text-sm text-gray-500">No recent alerts</div>
@@ -442,20 +549,31 @@ export default function Dashboard() {
                 <div className="text-lg font-medium">Predicted Details</div>
                 <button onClick={() => setShowPredModal(false)} className="rounded-md border px-2 py-1 text-sm">Close</button>
               </div>
-              <div className="text-sm text-gray-500 mb-2">{place || 'Your location'}{owmCurrent ? ` — ${Math.round(owmCurrent.temp)}°C, ${owmCurrent.humidity}% RH, ${owmCurrent.clouds}% clouds` : ''}</div>
+              <div className="text-sm text-gray-500 mb-2">
+              {place || 'Your location'}
+              {mlPrediction?.weatherData ? 
+                ` — ${Math.round(mlPrediction.weatherData.main?.temp || 0)}°C, ${mlPrediction.weatherData.main?.humidity || 0}% RH, ${mlPrediction.weatherData.clouds?.all || 0}% clouds` :
+                owmCurrent ? ` — ${Math.round(owmCurrent.temp)}°C, ${owmCurrent.humidity}% RH, ${owmCurrent.clouds}% clouds` : ''
+              }
+            </div>
               <div className="h-60">
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={predictedChartData}>
+                  <AreaChart data={mlPrediction?.hourlyPredictions || predictedChartData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis 
                       dataKey="time" 
                       minTickGap={20}
                       tickFormatter={(value) => value}
-                      domain={['00:00', '24:00']}
                     />
                     <YAxis />
                     <Tooltip />
-                    <Area type="monotone" dataKey="Predicted" stroke="#22c55e" strokeWidth={2} fill="#22c55e22" />
+                    <Area 
+                      type="monotone" 
+                      dataKey={mlPrediction ? "predicted" : "Predicted"} 
+                      stroke={mlPrediction ? "#8b5cf6" : "#22c55e"} 
+                      strokeWidth={2} 
+                      fill={mlPrediction ? "#8b5cf622" : "#22c55e22"} 
+                    />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>

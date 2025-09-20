@@ -60,7 +60,7 @@ export class ThingSpeakReader {
         throw new Error(`ThingSpeak API error: ${response.status}`)
       }
 
-      const data: ThingSpeakResponse = await response.json()
+      const data = await response.json() as ThingSpeakResponse
       
       if (!data.feeds || data.feeds.length === 0) {
         console.warn('No data available from ThingSpeak')
@@ -84,7 +84,7 @@ export class ThingSpeakReader {
         throw new Error(`ThingSpeak API error: ${response.status}`)
       }
 
-      const data: ThingSpeakResponse = await response.json()
+      const data = await response.json() as ThingSpeakResponse
       
       if (!data.feeds || data.feeds.length === 0) {
         console.warn('No historical data available from ThingSpeak')
